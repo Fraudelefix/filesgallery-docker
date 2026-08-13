@@ -1,6 +1,6 @@
 # Files Gallery ACL Phase 2A security analysis
 
-Status: analysis only. No Files Gallery code, runtime behaviour, entrypoint, or image is changed by this document.
+Status: Phase 2A analysis. Its four-hook recommendation is implemented in Phase 2B; this document remains the rationale and attack-path record.
 
 ## Scope and source identity
 

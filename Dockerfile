@@ -36,10 +36,12 @@ COPY docker/config.php /usr/local/share/filesgallery/config.php
 COPY docker/admin-config.php /usr/local/share/filesgallery/admin-config.php
 COPY app/VERSION /usr/local/share/filesgallery/VERSION
 COPY docker/_filesconfig.php /var/www/html/_filesconfig.php
+COPY docker/acl /usr/local/share/filesgallery/acl
 
 RUN a2enconf filesgallery \
     && chmod 0555 /usr/local/bin/filesgallery-entrypoint \
     && chown root:root /var/www/html/_filesconfig.php \
+    && chown -R root:root /usr/local/share/filesgallery/acl \
     && . /usr/local/share/filesgallery/VERSION \
     && test -n "$FILES_GALLERY_VERSION" \
     && test -n "$FILES_GALLERY_UPSTREAM_COMMIT" \

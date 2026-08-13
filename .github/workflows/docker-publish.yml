@@ -17,7 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run ACL library unit tests
-        run: php docker/acl/tests/acl_test.php
+        run: |
+          php docker/acl/tests/acl_test.php
+          php docker/acl/tests/integration_test.php
 
   validate-release-tag:
     if: github.event_name == 'push'
@@ -91,7 +93,22 @@ jobs:
           image=filesgallery-test:manual
           container=filesgallery-test
           mkdir test-media test-config
+          mkdir -p test-media/Family/Private test-media/Family/Shared/2026 test-media/Videos test-media/Other test-config/users/victor
+          printf 'parent secret\n' > test-media/Family/parent.txt
+          printf 'private secret\n' > test-media/Family/Private/secret.txt
+          printf 'shared content\n' > test-media/Family/Shared/shared.txt
+          printf 'deeper content\n' > test-media/Family/Shared/2026/deeper.txt
+          printf 'video content\n' > test-media/Videos/video.txt
+          printf 'other secret\n' > test-media/Other/other.txt
           printf 'test media\n' > test-media/photo.jpg
+          cat > test-config/users/victor/config.php <<'PHP'
+          <?php
+          return ['password' => 'victor-test-password'];
+          PHP
+          cat > test-config/users/victor/acl.php <<'PHP'
+          <?php
+          return ['allow' => ['Family/Shared', 'Videos']];
+          PHP
           trap 'docker rm -f "$container" 2>/dev/null || true' EXIT
           wait_for_app() {
             for _ in {1..20}; do
@@ -109,7 +126,11 @@ jobs:
             -v "$PWD/test-media:/media:ro" -v "$PWD/test-config:/config" "$image"
           wait_for_app
           docker exec "$container" apachectl -t
-          docker exec "$container" sh -c "sha256sum /var/www/html/index.php | grep -q '^$FILES_GALLERY_SHA256'"
+          docker exec "$container" sh -c "sha256sum /usr/local/share/filesgallery/upstream-index.php | grep -q '^$FILES_GALLERY_SHA256'"
+          docker exec "$container" sh -c 'test ! -e /var/www/html/index.php || grep -q FILESGALLERY_ACL_INIT_V1 /var/www/html/index.php'
+          for marker in FILESGALLERY_ACL_INIT_V1 FILESGALLERY_ACL_FILTER_V1 FILESGALLERY_ACL_MENU_V1 FILESGALLERY_ACL_PREVIEW_V1; do
+            test "$(docker exec "$container" sh -c "grep -c $marker /var/www/html/index.php")" = 1
+          done
           docker exec "$container" grep -F "Files Gallery $FILES_GALLERY_VERSION" /var/www/html/index.php
           for extension in exif gd imagick mbstring zip; do
             docker exec "$container" php -r "exit(extension_loaded('$extension') ? 0 : 1);"
@@ -124,15 +145,32 @@ jobs:
           docker exec "$container" php -r '$config=include "/config/users/admin/config.php"; exit($config["allow_tests"] === true ? 0 : 1);'
           docker exec "$container" php -r '$config=include "/config/config/config.php"; $files=$config["files_exclude"] ?? ""; $dirs=$config["dirs_exclude"] ?? ""; exit(preg_match($files, ".env") && preg_match($files, "Thumbs.db") && !preg_match($files, "photo.jpg") && preg_match($dirs, "Photos/@eaDir") && preg_match($dirs, "Photos/.cache") && !preg_match($dirs, "Album.2025") ? 0 : 1);'
           docker exec "$container" php -r '$config=include "/var/www/html/_filesconfig.php"; $template=$config["settings_editor"]["template"] ?? ""; $files=base64_decode("ICAnZmlsZXNfZXhjbHVkZScgPT4gJy8oXnxcLykoXC58VGh1bWJzXC5kYiR8ZGVza3RvcFwuaW5pJHx+XCQpL2knLA=="); $dirs=base64_decode("ICAnZGlyc19leGNsdWRlJyA9PiAnLyhefFwvKShAZWFEaXJ8Wy5dW15cL10qfF9fTUFDT1NYfFwkUkVDWUNMRVwuQklOKShcL3wkKS9pJyw="); exit(str_contains($template, $files) && str_contains($template, $dirs) ? 0 : 1);'
+          token="$(docker exec "$container" sh -c 'curl --fail --silent -c /tmp/fg-cookie http://127.0.0.1:80' | sed -n 's/.*name="token" value="\([^"]*\)".*/\1/p')"
+          test -n "$token"
+          docker exec "$container" sh -c "curl --fail --silent -b /tmp/fg-cookie -c /tmp/fg-cookie -d 'fusername=victor&fpassword=victor-test-password&token=$token' http://127.0.0.1:80 >/dev/null"
+          docker exec "$container" sh -c 'curl --fail --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=files&dir=Family"' > family.json
+          grep -q 'Shared' family.json
+          ! grep -q 'parent.txt\|Private' family.json
+          docker exec "$container" sh -c 'curl --fail --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=file&file=Family/Shared/shared.txt"' | grep -q 'shared content'
+          ! docker exec "$container" sh -c 'curl --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=file&file=Family/parent.txt"' | grep -q 'parent secret'
+          ! docker exec "$container" sh -c 'curl --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=download&file=Family/Private/secret.txt"' | grep -q 'private secret'
+          ! docker exec "$container" sh -c 'curl --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=load_text_file&file=Other/other.txt"' | grep -q 'other secret'
+          docker exec "$container" sh -c 'curl --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=preview&dir=Family"' | grep -q 'ACL preview access denied'
+          ! docker exec "$container" sh -c 'curl --silent "http://127.0.0.1:80/media/Family/Private/secret.txt"' | grep -q 'private secret'
+          ! docker exec "$container" sh -c 'curl --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=file&file=../etc/passwd"' | grep -q 'root:'
+          if docker run --rm --entrypoint php "$image" /usr/local/share/filesgallery/acl/patch.php /usr/local/share/filesgallery/acl/acl.php /tmp/out; then
+            echo "ACL patch unexpectedly accepted an invalid upstream source" >&2
+            exit 1
+          fi
           docker network disconnect bridge "$container"
           docker restart "$container"
-          docker exec "$container" sh -c "sha256sum /var/www/html/index.php | grep -q '^$FILES_GALLERY_SHA256'"
+          docker exec "$container" sh -c "sha256sum /usr/local/share/filesgallery/upstream-index.php | grep -q '^$FILES_GALLERY_SHA256'; grep -q FILESGALLERY_ACL_INIT_V1 /var/www/html/index.php"
           docker rm -f "$container"
           docker run -d --name "$container" \
             -e PUID=1030 -e PGID=100 -e FILES_GALLERY_ADMIN_PASSWORD=change-me \
             -v "$PWD/test-media:/media:ro" -v "$PWD/test-config:/config" "$image"
           wait_for_app
-          docker exec "$container" sh -c "sha256sum /var/www/html/index.php | grep -q '^$FILES_GALLERY_SHA256'"
+          docker exec "$container" sh -c "sha256sum /usr/local/share/filesgallery/upstream-index.php | grep -q '^$FILES_GALLERY_SHA256'; grep -q FILESGALLERY_ACL_INIT_V1 /var/www/html/index.php"
           docker rm -f "$container"
           sed 's/^FILES_GALLERY_SHA256=.*/FILES_GALLERY_SHA256=0000000000000000000000000000000000000000000000000000000000000000/' app/VERSION > bad-version
           if docker run --rm -e PUID=1030 -e PGID=100 -e FILES_GALLERY_ADMIN_PASSWORD=change-me \

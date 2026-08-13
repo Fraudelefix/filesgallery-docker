@@ -6,6 +6,7 @@ PGID="${PGID:-33}"
 case "$PUID:$PGID" in *[!0-9:]*|:*|*:) echo "PUID and PGID must be numeric" >&2; exit 64;; esac
 
 METADATA_FILE="/usr/local/share/filesgallery/VERSION"
+PRISTINE_INDEX_PATH="/usr/local/share/filesgallery/upstream-index.php"
 INDEX_PATH="/var/www/html/index.php"
 
 load_upstream_metadata() {
@@ -42,16 +43,16 @@ verify_upstream_index() {
   fi
 }
 
-install_upstream_index() {
-  if [ -e "$INDEX_PATH" ]; then
-    if ! verify_upstream_index "$INDEX_PATH"; then
-      echo "Existing Files Gallery index.php is invalid; refusing to replace it" >&2
+install_pristine_index() {
+  if [ -e "$PRISTINE_INDEX_PATH" ]; then
+    if ! verify_upstream_index "$PRISTINE_INDEX_PATH"; then
+      echo "Existing pristine Files Gallery index.php is invalid" >&2
       exit 67
     fi
     return
   fi
 
-  temporary="$(mktemp /var/www/html/.filesgallery-index.XXXXXX)"
+  temporary="$(mktemp /usr/local/share/filesgallery/.upstream-index.XXXXXX)"
   if ! curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
       --connect-timeout 15 --retry 3 --retry-all-errors \
       --output "$temporary" "$FILES_GALLERY_URL"; then
@@ -66,15 +67,37 @@ install_upstream_index() {
   fi
   chown root:root "$temporary"
   chmod 0644 "$temporary"
-  mv -f "$temporary" "$INDEX_PATH"
-  if ! verify_upstream_index "$INDEX_PATH"; then
-    echo "Installed Files Gallery index.php failed final verification" >&2
+  mv -f "$temporary" "$PRISTINE_INDEX_PATH"
+  if ! verify_upstream_index "$PRISTINE_INDEX_PATH"; then
+    echo "Installed pristine Files Gallery index.php failed final verification" >&2
     exit 67
   fi
 }
 
+install_patched_runtime_index() {
+  temporary="$(mktemp /var/www/html/.filesgallery-runtime.XXXXXX)"
+  if ! php -d display_errors=0 /usr/local/share/filesgallery/acl/patch.php "$PRISTINE_INDEX_PATH" "$temporary"; then
+    rm -f "$temporary"
+    echo "Files Gallery ACL patch failed" >&2
+    exit 67
+  fi
+  if ! php -d display_errors=0 -l "$temporary" >/dev/null; then
+    rm -f "$temporary"
+    echo "Patched Files Gallery index.php is invalid PHP" >&2
+    exit 67
+  fi
+  for marker in FILESGALLERY_ACL_INIT_V1 FILESGALLERY_ACL_FILTER_V1 FILESGALLERY_ACL_MENU_V1 FILESGALLERY_ACL_PREVIEW_V1; do
+    [ "$(grep -c "$marker" "$temporary")" = 1 ] || { rm -f "$temporary"; echo "Patched Files Gallery marker verification failed" >&2; exit 67; }
+  done
+  grep -F "Files Gallery $FILES_GALLERY_VERSION" "$temporary" >/dev/null || { rm -f "$temporary"; echo "Patched Files Gallery version verification failed" >&2; exit 67; }
+  chown root:root "$temporary"
+  chmod 0644 "$temporary"
+  mv -f "$temporary" "$INDEX_PATH"
+}
+
 load_upstream_metadata
-install_upstream_index
+install_pristine_index
+install_patched_runtime_index
 
 # Apache master stays root to open port 80. Its workers subsequently run under
 # www-data, whose UID/GID are remapped to the NAS media owner.
