@@ -153,28 +153,34 @@ par défaut chargés depuis JSDelivr.
 | `docker/_filesconfig.php` | Correct et volontairement immuable : verrouille `storage_path`, `root` et `root_lock` avant la configuration administrable. |
 | `docker/config.php` | Configuration globale persistante initiale. Écriture média désactivée; aucun mot de passe clair; `allow_settings=false`. |
 | `docker/admin-config.php` | Modèle du seul utilisateur administrateur, avec `allow_settings=true`. |
-| `docker/entrypoint.sh` | Remappe `www-data`, initialise les deux configs, synchronise uniquement le hash du mot de passe admin depuis Compose et reprend la propriété de `/config` uniquement si l'identité change. |
+| `docker/entrypoint.sh` | Remappe `www-data`, initialise les deux configs et synchronise uniquement le hash du mot de passe admin depuis Compose. Il garde `/config` sous `root:root` et ne reprend récursivement que les trois sous-répertoires applicatifs après un changement d'identité. |
 | `docker/php-filesgallery.ini` | 512 MiB/120 s pour les aperçus, upload limité parce qu'inutilisé, sessions dans `/tmp`. |
 | `docker/apache-filesgallery.conf` | Pas d'index de répertoire, pas de `.htaccess`, bootstrap `_filesconfig.php` explicitement refusé; `/config` et `/media` sont hors DocumentRoot. |
-| `Dockerfile` | PHP exact, extensions/fournisseurs ImageMagick, Imagick exact, vérification SHA-256 de l'application; `mod_rewrite` supprimé. |
+| `Dockerfile` | PHP exact, extensions/fournisseurs ImageMagick, Imagick exact, vérification SHA-256 de l'application et smoke tests des extensions/formats au build; `mod_rewrite` supprimé. |
 | `compose.yaml` | Les `PUID/PGID` sont effectivement consommés; le mot de passe admin est la source de vérité; `no-new-privileges` reste compatible. |
 
 ## 8. Dockerfile et entrypoint
 
 Le Dockerfile installe les bibliothèques runtime et les en-têtes de compilation,
-compile GD, Imagick 3.8.1, puis supprime les paquets `-dev`. `apt` conserve les
-bibliothèques runtime requises par ImageMagick et Imagick, car elles sont des
-dépendances du paquet ImageMagick ou détectées par le paquet installé. C'est à
-valider par `ldd`/tests de format après build. Le tag PHP précis stabilise la
+compile GD, Imagick 3.8.1, puis supprime les paquets `-dev`. Il conserve
+explicitement `libzip4`, bibliothèque runtime de `zip.so` sous Debian Bookworm,
+ainsi que `libonig5` pour mbstring. Le build exécute `php -m`, vérifie `exif`,
+`gd`, `imagick`, `mbstring` et `zip`, contrôle les dépendances de `zip.so` avec
+`ldd`, puis vérifie `convert`, JPEG, TIFF et `ffmpeg`. Le tag PHP précis stabilise la
 version PHP; pour une reproductibilité binaire absolue, remplacer `PHP_IMAGE`
 par un digest amd64 vérifié, au prix de ne plus recevoir les correctifs de base
 tant que ce digest n'est pas mis à jour explicitement.
 
-L'entrypoint est idempotent : groupe existant par GID accepté, UID existant
-différent refusé explicitement, et répertoire `/config` repris seulement si
-`PUID:PGID` change. `getent`, `groupadd`, `usermod`, `install` et `php` sont
-présents dans la base Debian/PHP. Les sessions utilisent `/tmp`; aucune session
-ne doit être sauvegardée.
+L'entrypoint est idempotent : groupe existant par GID accepté et UID existant
+différent refusé explicitement. `/config` reste `root:root` en `0755`; seuls
+`/config/config`, `/config/cache` et `/config/users` sont `www-data:<PGID>` en
+`0700`. Une reprise récursive, déclenchée seulement lorsque `PUID:PGID` change,
+est strictement limitée à ces trois sous-répertoires. Cela sépare l'espace
+Docker Synology du compte qui lit `/media:ro`. Avant de démarrer Apache,
+l'entrypoint confirme que `www-data` peut écrire dans chacun de ces répertoires.
+Les écritures de configuration sont atomiques et les configurations PHP
+existantes invalides font échouer le démarrage sans être écrasées. Les sessions
+utilisent `/tmp`; aucune session ne doit être sauvegardée.
 
 `no-new-privileges:true` est compatible : il interdit à un processus d'acquérir
 de nouveaux privilèges à l'exécution (setuid, file capabilities), mais ne retire
@@ -203,22 +209,22 @@ non-root préparée à la construction, qui complique précisément le problème
 ### Image publiée dans GHCR
 
 Le workflow GitHub Actions **Publish Docker image** construit le Dockerfile à
-la racine et publie uniquement lors d'un tag Git strictement au format
-`YYYY.MM.DD`. Il cible explicitement `linux/amd64`, l'architecture du Synology
+la racine et publie uniquement lors d'un tag Git au format `YYYY.MM.DD` ou
+`YYYY.MM.DD-N` (par exemple `2026.08.13-2`). Il cible explicitement `linux/amd64`, l'architecture du Synology
 DS920+, et réutilise le cache BuildKit GitHub Actions. Une exécution manuelle
 du workflow construit seulement l'image : elle ne publie aucun tag.
 
 Pour publier une release, après avoir vérifié le workflow :
 
 ```sh
-git tag 2026.08.13
-git push origin 2026.08.13
+git tag 2026.08.13-2
+git push origin 2026.08.13-2
 ```
 
 GitHub Actions publie alors :
 
 ```text
-ghcr.io/fraudelefix/filesgallery-docker:2026.08.13
+ghcr.io/fraudelefix/filesgallery-docker:2026.08.13-2
 ghcr.io/fraudelefix/filesgallery-docker:latest
 ```
 
@@ -236,7 +242,7 @@ Sur Synology, un projet consommateur peut utiliser l'image publiée sans section
 ```yaml
 services:
   filesgallery:
-    image: ghcr.io/fraudelefix/filesgallery-docker:2026.08.13
+    image: ghcr.io/fraudelefix/filesgallery-docker:2026.08.13-2
     environment:
       PUID: "1030"
       PGID: "100"
@@ -249,7 +255,7 @@ services:
 ```
 
 Préférer un tag daté à `latest` en production. En cas de régression de
-`2026.09.02`, remettre `:2026.08.13` puis recréer le conteneur; ne supprimez
+`2026.08.13-2`, remettre `:2026.08.13` puis recréer le conteneur; ne supprimez
 jamais le volume `/config` pendant ce rollback.
 
 ## 10. Tests de validation

@@ -12,7 +12,7 @@ LABEL org.opencontainers.image.title="Files Gallery local" \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg ghostscript imagemagick \
         libfreetype6-dev libheif1 libjpeg62-turbo-dev libmagickwand-dev libonig-dev \
-        libpng-dev libwebp-dev libzip-dev \
+        libonig5 libpng-dev libwebp-dev libzip-dev libzip4 \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install -j"$(nproc)" exif gd mbstring zip \
     && pecl install imagick-${IMAGICK_VERSION} \
@@ -20,6 +20,15 @@ RUN apt-get update \
     && a2enmod headers \
     && apt-get purge -y --auto-remove libfreetype6-dev libjpeg62-turbo-dev libonig-dev \
         libmagickwand-dev libpng-dev libwebp-dev libzip-dev \
+    && php -m \
+    && for extension in exif gd imagick mbstring zip; do php -r "exit(extension_loaded('$extension') ? 0 : 1);"; done \
+    && extension_dir="$(php -r 'echo ini_get("extension_dir");')" \
+    && test -f "$extension_dir/zip.so" \
+    && ! ldd "$extension_dir/zip.so" | grep -q 'not found' \
+    && convert -version \
+    && convert -list format | grep -Eq '^[[:space:]]*JPEG[[:space:]]' \
+    && convert -list format | grep -Eq '^[[:space:]]*TIFF[[:space:]]' \
+    && ffmpeg -version \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/apache-filesgallery.conf /etc/apache2/conf-available/filesgallery.conf
