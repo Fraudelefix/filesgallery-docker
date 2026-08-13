@@ -41,6 +41,7 @@ jobs:
     needs:
       - validate-release-tag
       - acl-unit-tests
+      - acl-runtime-security-tests
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -69,8 +70,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  verify-manual-build:
-    if: github.event_name == 'workflow_dispatch'
+  acl-runtime-security-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

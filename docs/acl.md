@@ -35,3 +35,8 @@ The loader accesses only `<usersRoot>/<validated username>/acl.php`, normalizes,
 The runtime adapter initializes after Files Gallery authentication/configuration, derives a cache namespace from the existing `cache_key`, canonical username, and prepared ACL, and applies traversal/read checks through the central Files Gallery path filter. Both the logical path and canonical symlink target must be allowed. Menu-cache hashes are bound to the current ACL namespace, and a folder preview requires directory read permission rather than traversal permission.
 
 ACL protection requires `load_files_proxy_php=true` and media outside the web document root, with no web-server alias, bind, or symlink exposing `/media`, cache, or downloads directly. The current scope is read-only media. Write ACL and an ACL Web UI are not implemented.
+# Phase 2B runtime enforcement
+
+ACL enforcement is applied only to read paths. Files Gallery's runtime menu and folder JSON caches use a namespace derived from the existing cache key, canonical user name and normalized ACL. A stale or foreign menu hash is treated as a cache miss and rebuilt in the current namespace.
+
+`CleanCache` does not reconstruct ACL namespaces, so it can remove an otherwise-valid ACL cache early; this is performance-only and cannot expose data. Write authorization and an ACL Web UI are deliberately not implemented.
