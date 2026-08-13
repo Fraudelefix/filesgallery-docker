@@ -163,6 +163,7 @@ jobs:
             timeout 10s docker logs "$container" || true
             exit 1
           fi
+          cat family.json
           grep -q 'Shared' family.json
           ! grep -q 'parent.txt\|Private' family.json
           echo 'ACL test: allowed direct file'
