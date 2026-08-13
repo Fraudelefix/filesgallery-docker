@@ -154,7 +154,7 @@ jobs:
             exit 1
           fi
           echo 'ACL test: authenticated Family listing'
-          if ! docker exec "$container" sh -c 'curl --fail-with-body --silent --show-error -D /tmp/family.headers -b /tmp/fg-cookie "http://127.0.0.1:80?action=files&dir=Family"' > family.json; then
+          if ! docker exec "$container" sh -c 'curl --max-time 15 --fail-with-body --silent --show-error -D /tmp/family.headers -b /tmp/fg-cookie "http://127.0.0.1:80?action=files&dir=Family"' > family.json; then
             cat family.json
             docker exec "$container" cat /tmp/family.headers || true
             docker exec "$container" cat /var/log/apache2/error.log || true
