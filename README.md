@@ -200,6 +200,58 @@ non-root préparée à la construction, qui complique précisément le problème
    puis placez le service derrière le reverse proxy DSM HTTPS. N'exposez pas
    8083 directement sur Internet.
 
+### Image publiée dans GHCR
+
+Le workflow GitHub Actions **Publish Docker image** construit le Dockerfile à
+la racine et publie uniquement lors d'un tag Git strictement au format
+`YYYY.MM.DD`. Il cible explicitement `linux/amd64`, l'architecture du Synology
+DS920+, et réutilise le cache BuildKit GitHub Actions. Une exécution manuelle
+du workflow construit seulement l'image : elle ne publie aucun tag.
+
+Pour publier une release, après avoir vérifié le workflow :
+
+```sh
+git tag 2026.08.13
+git push origin 2026.08.13
+```
+
+GitHub Actions publie alors :
+
+```text
+ghcr.io/fraudelefix/filesgallery-docker:2026.08.13
+ghcr.io/fraudelefix/filesgallery-docker:latest
+```
+
+Le workflow ajoute les métadonnées OCI de source, révision, date de création
+et version. Le `GITHUB_TOKEN` suffit à publier grâce aux permissions
+`contents: read` et `packages: write`; aucun PAT n'est requis. La visibilité
+publique du package ne se règle pas proprement depuis ce workflow : après la
+première publication, ouvrez le package dans GitHub puis **Package settings**
+→ **Change visibility** → **Public**. Cette opération est à faire une seule
+fois pour permettre au Synology de tirer l'image sans authentification.
+
+Sur Synology, un projet consommateur peut utiliser l'image publiée sans section
+`build` :
+
+```yaml
+services:
+  filesgallery:
+    image: ghcr.io/fraudelefix/filesgallery-docker:2026.08.13
+    environment:
+      PUID: "1030"
+      PGID: "100"
+      TZ: "Europe/Paris"
+      FILES_GALLERY_ADMIN_PASSWORD: "changeme"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+      - "/volume2/docker/filesgallery/config:/config"
+      - "/volume1/homes/Victor/Numerisation:/media:ro"
+```
+
+Préférer un tag daté à `latest` en production. En cas de régression de
+`2026.09.02`, remettre `:2026.08.13` puis recréer le conteneur; ne supprimez
+jamais le volume `/config` pendant ce rollback.
+
 ## 10. Tests de validation
 
 ```sh
