@@ -112,9 +112,9 @@ jobs:
           docker exec "$container" php -l /config/users/admin/config.php
           docker exec "$container" php -r '$config=include "/config/config/config.php"; exit($config["allow_tests"] === false ? 0 : 1);'
           docker exec "$container" php -r '$config=include "/config/users/admin/config.php"; exit($config["allow_tests"] === true ? 0 : 1);'
-          docker exec "$container" php -r '$config=include "/config/config/config.php"; exit(($config["files_exclude"] ?? null) === "/(^|\\/)(\\.|Thumbs\\.db$|desktop\\.ini$|~\\$)/i" && ($config["dirs_exclude"] ?? null) === "/(^|\\/)(@eaDir|[.][^\\/]*|__MACOSX|\\$RECYCLE\\.BIN)(\\/|$)/i" ? 0 : 1);'
+          docker exec "$container" php -r '$config=include "/config/config/config.php"; exit(($config["files_exclude"] ?? null) === "/(^|\\/)(\\.|Thumbs\\.db$|desktop\\.ini$|~\\$)/i" && ($config["dirs_exclude"] ?? null) === "/(^|\\/)(@eaDir|[.][^\\/]*|__MACOSX|\\\$RECYCLE\\.BIN)(\\/|$)/i" ? 0 : 1);'
           docker exec "$container" sh -c 'curl --fail --silent http://127.0.0.1:80 | grep -q "\"settings_editor\""'
-          docker exec "$container" php -r '$config=include "/var/www/html/_filesconfig.php"; $template=$config["settings_editor"]["template"] ?? ""; $path=tempnam(sys_get_temp_dir(), "fg-template-"); file_put_contents($path, str_replace("$PASSWORD", "test-password", $template)); $user=include $path; unlink($path); exit(($user["files_exclude"] ?? null) === "/(^|\\/)(\\.|Thumbs\\.db$|desktop\\.ini$|~\\$)/i" && ($user["dirs_exclude"] ?? null) === "/(^|\\/)(@eaDir|[.][^\\/]*|__MACOSX|\\$RECYCLE\\.BIN)(\\/|$)/i" ? 0 : 1);'
+          docker exec "$container" php -r '$config=include "/var/www/html/_filesconfig.php"; $template=$config["settings_editor"]["template"] ?? ""; $path=tempnam(sys_get_temp_dir(), "fg-template-"); file_put_contents($path, str_replace("$PASSWORD", "test-password", $template)); $user=include $path; unlink($path); exit(($user["files_exclude"] ?? null) === "/(^|\\/)(\\.|Thumbs\\.db$|desktop\\.ini$|~\\$)/i" && ($user["dirs_exclude"] ?? null) === "/(^|\\/)(@eaDir|[.][^\\/]*|__MACOSX|\\\$RECYCLE\\.BIN)(\\/|$)/i" ? 0 : 1);'
           docker network disconnect bridge "$container"
           docker restart "$container"
           docker exec "$container" sh -c "sha256sum /var/www/html/index.php | grep -q '^$FILES_GALLERY_SHA256'"
