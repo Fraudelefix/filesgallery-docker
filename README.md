@@ -11,6 +11,8 @@ The Docker image does not contain the Files Gallery application. At container st
 - GitHub: https://github.com/mjau-mjau/files.photo.gallery
 - Website: https://www.files.gallery/
 
+- Licence type : F1-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX
+
 ## Features
 
 - Apache with PHP 8.3, ImageMagick/Imagick, FFmpeg, TIFF and HEIC preview support.
