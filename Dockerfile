@@ -11,14 +11,14 @@ LABEL org.opencontainers.image.title="Files Gallery local" \
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg ghostscript imagemagick \
-        libfreetype6-dev libheif1 libjpeg62-turbo-dev libmagickwand-dev \
+        libfreetype6-dev libheif1 libjpeg62-turbo-dev libmagickwand-dev libonig-dev \
         libpng-dev libwebp-dev libzip-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install -j"$(nproc)" exif gd mbstring zip \
     && pecl install imagick-${IMAGICK_VERSION} \
     && docker-php-ext-enable imagick \
     && a2enmod headers \
-    && apt-get purge -y --auto-remove libfreetype6-dev libjpeg62-turbo-dev \
+    && apt-get purge -y --auto-remove libfreetype6-dev libjpeg62-turbo-dev libonig-dev \
         libmagickwand-dev libpng-dev libwebp-dev libzip-dev \
     && rm -rf /var/lib/apt/lists/*
 
