@@ -37,24 +37,24 @@ Use a dated image tag in production. The latest successful tag at the time of th
 ~~~yaml
 services:
   filesgallery:
-    image: ghcr.io/fraudelefix/filesgallery-docker:2026.08.13-4
+    image: ghcr.io/fraudelefix/filesgallery-docker:2026.08.13:latest
     container_name: filesgallery
     hostname: filesgallery
     restart: unless-stopped
 
     ports:
-      - "8083:80"
+      - "8080:80" 
 
     environment:
-      PUID: "1030"
-      PGID: "100"
+      PUID: "1000" # Change me
+      PGID: "1000" # Change me
       TZ: "Europe/Paris"
-      FILES_GALLERY_ADMIN_PASSWORD: "change-me"
+      FILES_GALLERY_ADMIN_PASSWORD: "changeme"
 
     volumes:
       - "/etc/localtime:/etc/localtime:ro"
-      - "/volume2/docker/filesgallery/config:/config"
-      - "/volume1/homes/Victor/Numerisation:/media:ro"
+      - "/path/to/filesgallery/config:/config"
+      - "/path/to/media:/media:ro"
 
     security_opt:
       - no-new-privileges:true
@@ -82,10 +82,3 @@ This is only Files Gallery display/access filtering. Nothing in /media is delete
 Git tags use YYYY.MM.DD or YYYY.MM.DD-N and publish matching GHCR image tags. latest is also updated for a successful tagged publication, but production deployments should use a dated tag. To roll back, switch the image tag in Compose and recreate the container; keep /config intact.
 
 The pinned upstream dependency is defined in [app/VERSION](app/VERSION). It records the Files Gallery version, upstream commit, raw GitHub URL, and SHA-256. The upstream index.php is intentionally not stored in this repository or baked into the image.
-
-## Credits
-
-Files Gallery is developed by [mjau-mjau](https://github.com/mjau-mjau). This repository is an independent Docker packaging project and is not affiliated with or endorsed by the upstream author.
-
-- https://github.com/mjau-mjau/files.photo.gallery
-- https://www.files.gallery/
