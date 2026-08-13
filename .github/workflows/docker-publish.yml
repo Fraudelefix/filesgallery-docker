@@ -156,7 +156,7 @@ jobs:
           menu_cache_hash="$(sed -n 's/.*"menu_cache_hash"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' login-response.html | head -n1)"
           test -n "$menu_cache_hash"
           echo 'ACL test: authenticated Family listing'
-          if ! timeout 25s docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail-with-body --silent --show-error -D /tmp/family.headers -b /tmp/fg-cookie -d 'action=files&dir=Family&menu_cache_hash=$menu_cache_hash' http://127.0.0.1:80" > family.json; then
+          if ! timeout 25s docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail-with-body --silent --show-error -D /tmp/family.headers -b /tmp/fg-cookie -d 'dir=Family&menu_cache_hash=$menu_cache_hash' 'http://127.0.0.1:80?action=files'" > family.json; then
             cat family.json
             timeout 10s docker exec "$container" cat /tmp/family.headers || true
             timeout 10s docker exec "$container" cat /var/log/apache2/error.log || true
@@ -170,7 +170,7 @@ jobs:
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=file&file=Family/Shared/shared.txt"' | grep -q 'shared content'
           ! docker exec "$container" sh -c 'curl --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=file&file=Family/parent.txt"' | grep -q 'parent secret'
           ! docker exec "$container" sh -c 'curl --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=download&file=Family/Private/secret.txt"' | grep -q 'private secret'
-          ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-cookie -d "action=load_text_file&file=Other/other.txt" http://127.0.0.1:80' | grep -q 'other secret'
+          ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-cookie -d "file=Other/other.txt" "http://127.0.0.1:80?action=load_text_file"' | grep -q 'other secret'
           docker exec "$container" sh -c 'curl --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=preview&dir=Family"' | grep -q 'ACL preview access denied'
           ! docker exec "$container" sh -c 'curl --silent "http://127.0.0.1:80/media/Family/Private/secret.txt"' | grep -q 'private secret'
           ! docker exec "$container" sh -c 'curl --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=file&file=../etc/passwd"' | grep -q 'root:'
