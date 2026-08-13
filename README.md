@@ -66,6 +66,8 @@ Set PUID and PGID to the NAS user that owns the media, choose a strong admin pas
 
 The admin username is always admin. FILES_GALLERY_ADMIN_PASSWORD is the password source of truth: at every start, only the admin password hash is synchronised. ACLs and other per-user settings are preserved. Plain-text passwords are never stored in /config.
 
+Files Gallery diagnostics/tests are disabled globally and enabled by default for the built-in admin account only.
+
 ## Default exclusions
 
 Files Gallery hides these entries by default:

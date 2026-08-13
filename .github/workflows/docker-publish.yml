@@ -109,6 +109,8 @@ jobs:
           docker exec "$container" sh -c 'test "$(stat -c "%U:%G %a" /config)" = "root:root 755"; test "$(stat -c "%a" /config/config)" = 700; test "$(stat -c "%a" /config/cache)" = 700; test "$(stat -c "%a" /config/users)" = 700'
           docker exec "$container" php -l /config/config/config.php
           docker exec "$container" php -l /config/users/admin/config.php
+          docker exec "$container" php -r '$config=include "/config/config/config.php"; exit($config["allow_tests"] === false ? 0 : 1);'
+          docker exec "$container" php -r '$config=include "/config/users/admin/config.php"; exit($config["allow_tests"] === true ? 0 : 1);'
           docker network disconnect bridge "$container"
           docker restart "$container"
           docker exec "$container" sh -c "sha256sum /var/www/html/index.php | grep -q '^$FILES_GALLERY_SHA256'"

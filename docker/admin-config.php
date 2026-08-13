@@ -4,4 +4,5 @@
 return [
     'password' => '__FILES_GALLERY_ADMIN_PASSWORD_HASH__',
     'allow_settings' => true,
+    'allow_tests' => true,
 ];
