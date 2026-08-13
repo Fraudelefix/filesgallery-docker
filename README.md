@@ -1,5 +1,7 @@
 # Revue et stack Files Gallery — Synology DS920+ / DSM 7
 
+**Projet upstream : [Files Gallery — mjau-mjau/files.photo.gallery](https://github.com/mjau-mjau/files.photo.gallery)**
+
 Cette image exécute le fichier officiel Files Gallery **0.15.3** sur un unique
 conteneur Apache/PHP. `/media` reste la source de vérité et est monté en lecture
 seule; `/config` contient toutes les données applicatives persistantes.
