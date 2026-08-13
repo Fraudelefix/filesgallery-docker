@@ -206,6 +206,7 @@ jobs:
           list_dir /tmp/fg-narrow.cookie Family "$narrow_hash" > narrow-family.json
           ! grep -q 'parent.txt\|Private' narrow-family.json; grep -q 'Shared' narrow-family.json
           docker exec "$container" sh -c "printf '%s' \"<?php return ['allow' => ['Family/Shared']];\" > /config/users/broad/acl.php"
+          sleep 2 # PHP OPcache validates file timestamps at a one-second granularity.
           broad_changed_hash="$(login_user broad broad-test-password)"; test "$broad_changed_hash" != "$broad_hash"
           list_dir /tmp/fg-broad.cookie Family "$broad_hash" > broad-stale.json
           ! grep -q 'parent.txt\|Private' broad-stale.json; grep -q 'Shared' broad-stale.json
