@@ -8,8 +8,6 @@ The Docker image does not contain the Files Gallery application. At container st
 
 > Files is a single-file PHP app that can be dropped into any folder on server, instantly creating a gallery of files and folders. It supports all file types and allows you to preview images, video, audio, documents and text files.
 
-> — [Files Gallery upstream project](https://github.com/mjau-mjau/files.photo.gallery)
-
 - GitHub: https://github.com/mjau-mjau/files.photo.gallery
 - Website: https://www.files.gallery/
 
