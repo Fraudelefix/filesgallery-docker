@@ -32,12 +32,10 @@ If a download, checksum, version, or existing-file verification fails, the conta
 
 ## Docker Compose
 
-Use a dated image tag in production. The latest successful tag at the time of this documentation is 2026.08.13-4.
-
 ~~~yaml
 services:
   filesgallery:
-    image: ghcr.io/fraudelefix/filesgallery-docker:2026.08.13:latest
+    image: ghcr.io/fraudelefix/filesgallery-docker:latest
     container_name: filesgallery
     hostname: filesgallery
     restart: unless-stopped
