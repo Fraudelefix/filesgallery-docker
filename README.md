@@ -22,8 +22,8 @@ The Docker image does not contain the Files Gallery application. At container st
 
 ## How this image works
 
-1. The image contains Apache, PHP, and the required runtime dependencies—not the Files Gallery application.
-2. At startup, the entrypoint reads its pinned version metadata and downloads the official Files Gallery 0.15.3 index.php over HTTPS.
+1. The image contains Apache, PHP, and the required runtime dependencies.
+2. The image does not include the Files Gallery application. At startup, the entrypoint reads its pinned version metadata and downloads the official Files Gallery 0.15.3 index.php over HTTPS.
 3. The file is checked against its SHA-256 and its declared Files Gallery version before an atomic install to /var/www/html/index.php; the installed file is checked again afterwards.
 4. A normal restart reuses the already verified file. A recreated container downloads and verifies it again.
 5. /media is the read-only media source; /config stores Files Gallery configuration and cache.
