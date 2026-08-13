@@ -20,6 +20,8 @@ The Docker image does not contain the Files Gallery application. At container st
 - PHP extension and ImageMagick JPEG/TIFF smoke checks during image builds.
 - Common NAS and system files hidden from Files Gallery by default.
 
+TBC : ACL manager (permitted without licencing)
+
 ## How this image works
 
 1. The image contains Apache, PHP, and the required runtime dependencies.
