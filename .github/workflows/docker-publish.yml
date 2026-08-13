@@ -153,9 +153,11 @@ jobs:
             docker exec "$container" cat /var/log/apache2/error.log || true
             exit 1
           fi
+          echo 'ACL test: authenticated Family listing'
           docker exec "$container" sh -c 'curl --fail --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=files&dir=Family"' > family.json
           grep -q 'Shared' family.json
           ! grep -q 'parent.txt\|Private' family.json
+          echo 'ACL test: allowed direct file'
           docker exec "$container" sh -c 'curl --fail --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=file&file=Family/Shared/shared.txt"' | grep -q 'shared content'
           ! docker exec "$container" sh -c 'curl --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=file&file=Family/parent.txt"' | grep -q 'parent secret'
           ! docker exec "$container" sh -c 'curl --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=download&file=Family/Private/secret.txt"' | grep -q 'private secret'
