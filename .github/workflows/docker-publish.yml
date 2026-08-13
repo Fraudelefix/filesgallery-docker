@@ -101,12 +101,7 @@ jobs:
           printf 'video content\n' > test-media/Videos/video.txt
           printf 'other secret\n' > test-media/Other/other.txt
           printf 'test media\n' > test-media/photo.jpg
-          cat > test-config/users/victor/config.php <<'PHP'
-          <?php
-          return ['password' => '__VICTOR_PASSWORD_HASH__'];
-          PHP
-          victor_hash="$(php -r 'echo password_hash("victor-test-password", PASSWORD_DEFAULT);')"
-          sed -i "s|__VICTOR_PASSWORD_HASH__|$victor_hash|" test-config/users/victor/config.php
+          php -r 'file_put_contents("test-config/users/victor/config.php", "<?php\nreturn [\x27password\x27 => " . var_export(password_hash("victor-test-password", PASSWORD_DEFAULT), true) . "];\n");'
           cat > test-config/users/victor/acl.php <<'PHP'
           <?php
           return ['allow' => ['Family/Shared', 'Videos']];
@@ -143,6 +138,7 @@ jobs:
           docker exec "$container" php -l /var/www/html/_filesconfig.php
           docker exec "$container" php -l /config/config/config.php
           docker exec "$container" php -l /config/users/admin/config.php
+          docker exec "$container" php -r '$config=include "/config/users/victor/config.php"; exit(password_verify("victor-test-password", $config["password"]) ? 0 : 1);'
           docker exec "$container" php -r '$config=include "/config/config/config.php"; exit($config["allow_tests"] === false ? 0 : 1);'
           docker exec "$container" php -r '$config=include "/config/users/admin/config.php"; exit($config["allow_tests"] === true ? 0 : 1);'
           docker exec "$container" php -r '$config=include "/config/config/config.php"; $files=$config["files_exclude"] ?? ""; $dirs=$config["dirs_exclude"] ?? ""; exit(preg_match($files, ".env") && preg_match($files, "Thumbs.db") && !preg_match($files, "photo.jpg") && preg_match($dirs, "Photos/@eaDir") && preg_match($dirs, "Photos/.cache") && !preg_match($dirs, "Album.2025") ? 0 : 1);'
