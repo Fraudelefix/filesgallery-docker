@@ -103,8 +103,10 @@ jobs:
           printf 'test media\n' > test-media/photo.jpg
           cat > test-config/users/victor/config.php <<'PHP'
           <?php
-          return ['password' => 'victor-test-password'];
+          return ['password' => '__VICTOR_PASSWORD_HASH__'];
           PHP
+          victor_hash="$(php -r 'echo password_hash("victor-test-password", PASSWORD_DEFAULT);')"
+          sed -i "s|__VICTOR_PASSWORD_HASH__|$victor_hash|" test-config/users/victor/config.php
           cat > test-config/users/victor/acl.php <<'PHP'
           <?php
           return ['allow' => ['Family/Shared', 'Videos']];

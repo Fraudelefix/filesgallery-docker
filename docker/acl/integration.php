@@ -22,9 +22,16 @@ final class FilesGalleryAclIntegration
         if (Login::$is_logged_in && !Login::$is_default_user && isset($_SESSION['username']) && is_string($_SESSION['username'])) {
             try {
                 self::$username = acl_validate_username($_SESSION['username']);
+            } catch (Throwable) {
+                // An untrusted session value is never an ACL identity.
+                self::$username = '';
+            }
+
+            try {
                 self::$acl = acl_load(self::$username, Config::$storagepath . '/users');
             } catch (Throwable) {
-                self::$username = '';
+                // A missing or malformed ACL fails closed for normal users.  The
+                // canonical admin identity still retains its policy bypass.
                 self::$acl = ['allow' => []];
             }
         }
