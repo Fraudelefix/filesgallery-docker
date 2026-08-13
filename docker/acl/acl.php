@@ -23,7 +23,7 @@ function acl_validate_username(string $username): string
  */
 function acl_normalize_path(string $path, bool $allowEmpty = false): ?string
 {
-    if (str_contains($path, "\0") || str_contains($path, '\\') || preg_match('~^[\\/]~', $path)
+    if (preg_match('//u', $path) !== 1 || str_contains($path, "\0") || str_contains($path, '\\') || preg_match('~^[\\/]~', $path)
         || preg_match('~^[A-Za-z]:~', $path)) {
         return null;
     }
@@ -36,6 +36,18 @@ function acl_normalize_path(string $path, bool $allowEmpty = false): ?string
     }
 
     return implode('/', $parts);
+}
+
+/**
+ * Prepares an ACL once for acl_can_read() / acl_can_traverse().
+ *
+ * @return array{allow:list<string>}
+ */
+function acl_prepare(array $acl): array
+{
+    $allow = $acl['allow'] ?? [];
+    if (!is_array($allow)) throw new InvalidArgumentException('Invalid ACL allow list.');
+    return ['allow' => acl_normalize_allow($allow)];
 }
 
 /** @return list<string> */
@@ -93,7 +105,7 @@ function acl_load(string $username, string $usersRoot): array
         if (!is_array($acl)) return ['allow' => []];
         $allow = $acl['allow'] ?? [];
         if (!is_array($allow)) return ['allow' => []];
-        return ['allow' => acl_normalize_allow($allow)];
+        return acl_prepare(['allow' => $allow]);
     } catch (Throwable) {
         return ['allow' => []];
     }
@@ -112,16 +124,14 @@ function acl_is_branch(string $path, string $branch): bool
 /** True only for an allowed branch and its descendants. */
 function acl_can_read(string $username, string $path, array $acl): bool
 {
-    if (acl_is_admin($username)) return true;
     $path = acl_normalize_path($path, true);
     if ($path === null || $path === '') return false;
+    if (acl_is_admin($username)) return true;
 
-    try {
-        foreach (acl_normalize_allow(is_array($acl['allow'] ?? null) ? $acl['allow'] : []) as $branch) {
-            if (acl_is_branch($path, $branch)) return true;
-        }
-    } catch (InvalidArgumentException) {
-        return false;
+    $allow = $acl['allow'] ?? [];
+    if (!is_array($allow)) return false;
+    foreach ($allow as $branch) {
+        if (is_string($branch) && acl_is_branch($path, $branch)) return true;
     }
 
     return false;
@@ -130,18 +140,15 @@ function acl_can_read(string $username, string $path, array $acl): bool
 /** True for readable paths and the ancestors required to reach an allowed branch. */
 function acl_can_traverse(string $username, string $path, array $acl): bool
 {
-    if (acl_is_admin($username)) return true;
     $path = acl_normalize_path($path, true);
     if ($path === null) return false;
+    if (acl_is_admin($username)) return true;
 
-    try {
-        $allow = acl_normalize_allow(is_array($acl['allow'] ?? null) ? $acl['allow'] : []);
-        if ($path === '') return $allow !== [];
-        foreach ($allow as $branch) {
-            if (acl_is_branch($path, $branch) || str_starts_with($branch, $path . '/')) return true;
-        }
-    } catch (InvalidArgumentException) {
-        return false;
+    $allow = $acl['allow'] ?? [];
+    if (!is_array($allow)) return false;
+    if ($path === '') return $allow !== [];
+    foreach ($allow as $branch) {
+        if (is_string($branch) && (acl_is_branch($path, $branch) || str_starts_with($branch, $path . '/'))) return true;
     }
 
     return false;

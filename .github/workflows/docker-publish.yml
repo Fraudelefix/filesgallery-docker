@@ -36,7 +36,9 @@ jobs:
           echo "version=$tag" >> "$GITHUB_OUTPUT"
 
   publish:
-    needs: validate-release-tag
+    needs:
+      - validate-release-tag
+      - acl-unit-tests
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
