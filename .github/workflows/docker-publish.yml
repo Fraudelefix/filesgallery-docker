@@ -149,7 +149,11 @@ jobs:
           docker exec "$container" php -r '$config=include "/var/www/html/_filesconfig.php"; $template=$config["settings_editor"]["template"] ?? ""; $files=base64_decode("ICAnZmlsZXNfZXhjbHVkZScgPT4gJy8oXnxcLykoXC58VGh1bWJzXC5kYiR8ZGVza3RvcFwuaW5pJHx+XCQpL2knLA=="); $dirs=base64_decode("ICAnZGlyc19leGNsdWRlJyA9PiAnLyhefFwvKShAZWFEaXJ8Wy5dW15cL10qfF9fTUFDT1NYfFwkUkVDWUNMRVwuQklOKShcL3wkKS9pJyw="); exit(str_contains($template, $files) && str_contains($template, $dirs) ? 0 : 1);'
           token="$(docker exec "$container" sh -c 'curl --fail --silent -c /tmp/fg-cookie http://127.0.0.1:80' | sed -n 's/.*name="token" value="\([^"]*\)".*/\1/p')"
           test -n "$token"
-          docker exec "$container" sh -c "curl --fail --silent -b /tmp/fg-cookie -c /tmp/fg-cookie -d 'fusername=victor&fpassword=victor-test-password&token=$token' http://127.0.0.1:80 >/dev/null"
+          if ! docker exec "$container" sh -c "curl --fail-with-body --silent -b /tmp/fg-cookie -c /tmp/fg-cookie -d 'fusername=victor&fpassword=victor-test-password&token=$token' http://127.0.0.1:80" > login-response.html; then
+            cat login-response.html
+            docker logs "$container"
+            exit 1
+          fi
           docker exec "$container" sh -c 'curl --fail --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=files&dir=Family"' > family.json
           grep -q 'Shared' family.json
           ! grep -q 'parent.txt\|Private' family.json
