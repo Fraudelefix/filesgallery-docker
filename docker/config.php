@@ -9,8 +9,8 @@ return [
     'load_files_proxy_php' => true,
     'load_images' => true,
     // 0 n'est pas « illimité » : cela empêcherait de servir un original non
-    // redimensionnable. 32 MiB couvre notamment les TIFF modestes.
-    'load_images_max_filesize' => 33554432,
+    // redimensionnable. 256 MiB couvre les TIFF de numérisation volumineux.
+    'load_images_max_filesize' => 268435456,
     'image_resize_enabled' => true,
     'image_resize_use_imagemagick' => true,
     'imagemagick_prefer_imagick' => true,

@@ -69,7 +69,7 @@ propriétaire donne à PHP les droits de lecture et de liste requis. Le bind mou
 | CRITIQUE | Options 0.15 dans une application 0.13 | Corrigé : Files Gallery 0.15.3 officiel. |
 | CRITIQUE | Héritage de `allow_settings=true` | Corrigé : admin distinct, défaut à `false`. |
 | IMPORTANT | Secret initial public | Corrigé : lu depuis Compose, hashé dans `/config`. |
-| IMPORTANT | `load_images_max_filesize=0` | Corrigé à 32 MiB : 0 ne signifie pas illimité. |
+| IMPORTANT | `load_images_max_filesize=0` | Corrigé à 256 MiB : 0 ne signifie pas illimité. |
 | IMPORTANT | `ffmpeg_path` 0.13 ignoré | Corrigé par mise à niveau 0.15.3. |
 | MINEUR | `chown -R` à chaque démarrage | Corrigé : seulement après un changement d'identité. |
 | OPTIONNEL | Ghostscript | Conservé pour PDF/PS; retirer si ces aperçus ne sont jamais nécessaires. |
@@ -115,7 +115,7 @@ chaque compte créé possède explicitement `allow_settings => false`.
 
 `load_images_max_filesize=0` ne veut pas dire « aucune limite » : dans le code
 0 interdit de renvoyer un original lorsque le format n'est pas redimensionnable
-ou lorsque la réduction est inutile. `33554432` (32 MiB) permet ces originaux
+ou lorsque la réduction est inutile. `268435456` (256 MiB) permet ces originaux
 raisonnablement gros; les TIFF/HEIC pris en charge passent normalement par
 ImageMagick et le cache plutôt que par l'original.
 
