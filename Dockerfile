@@ -26,8 +26,8 @@ RUN apt-get update \
     && test -f "$extension_dir/zip.so" \
     && ! ldd "$extension_dir/zip.so" | grep -q 'not found' \
     && convert -version \
-    && convert -list format | grep -Eq '^[[:space:]]*JPEG[[:space:]]' \
-    && convert -list format | grep -Eq '^[[:space:]]*TIFF[[:space:]]' \
+    && convert -list format | grep -Eq '^[[:space:]]*JPEG' \
+    && convert -list format | grep -Eq '^[[:space:]]*TIFF' \
     && ffmpeg -version \
     && rm -rf /var/lib/apt/lists/*
 
