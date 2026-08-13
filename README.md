@@ -91,6 +91,13 @@ le chemin réel contre la racine pour les requêtes contenant `..`. Ils constitu
 une restriction applicative serveur, pas une ACL Unix : pour une isolation entre
 utilisateurs hostiles, il faut des volumes/instances ou ACL NAS séparés.
 
+Par défaut, l'image masque les fichiers cachés Unix/macOS commençant par `.`,
+`Thumbs.db`, `desktop.ini` et les fichiers temporaires Office commençant par
+`~$`. Elle masque aussi les dossiers Synology `@eaDir`, les dossiers cachés
+commençant par `.`, `__MACOSX` et `$RECYCLE.BIN`. Il s'agit uniquement d'un
+filtrage d'affichage et d'accès Files Gallery : les originaux ne sont ni
+supprimés ni modifiés.
+
 Exemples dans `/config/users` :
 
 ```php
