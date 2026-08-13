@@ -1,0 +1,26 @@
+services:
+  filesgallery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: filesgallery-local:0.13.0
+    container_name: filesgallery
+    hostname: filesgallery
+    restart: unless-stopped
+    stop_grace_period: 10s
+    ports:
+      - "8083:80"
+    environment:
+      # Effectivement utilisés par l'entrypoint pour remapper www-data.
+      PUID: "1030"
+      PGID: "100"
+      TZ: "Europe/Paris"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+      - "/volume2/docker/filesgallery/config:/config"
+      - "/volume1/homes/Victor/Numerisation:/media:ro"
+    security_opt:
+      - no-new-privileges:true
+    # À activer après les premiers essais sur DSM.
+    # mem_limit: 1g
+    # cpus: 2.0
