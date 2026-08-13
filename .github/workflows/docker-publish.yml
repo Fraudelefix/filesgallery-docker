@@ -153,7 +153,7 @@ jobs:
             docker exec "$container" cat /var/log/apache2/error.log || true
             exit 1
           fi
-          menu_cache_hash="$(sed -n 's/.*"menu_cache_hash":"\([^"]*\)".*/\1/p' login-response.html | head -n1)"
+          menu_cache_hash="$(sed -n 's/.*"menu_cache_hash"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' login-response.html | head -n1)"
           test -n "$menu_cache_hash"
           echo 'ACL test: authenticated Family listing'
           if ! timeout 25s docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail-with-body --silent --show-error -D /tmp/family.headers -b /tmp/fg-cookie -d 'action=files&dir=Family&menu_cache_hash=$menu_cache_hash' http://127.0.0.1:80" > family.json; then
