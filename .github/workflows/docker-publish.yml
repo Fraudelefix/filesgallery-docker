@@ -69,5 +69,59 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: false
+          load: true
+          tags: filesgallery-test:manual
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Verify runtime startup
+        shell: bash
+        run: |
+          set -euo pipefail
+          . app/VERSION
+          image=filesgallery-test:manual
+          container=filesgallery-test
+          mkdir test-media test-config
+          printf 'test media\n' > test-media/photo.jpg
+          trap 'docker rm -f "$container" 2>/dev/null || true' EXIT
+          wait_for_app() {
+            for _ in {1..20}; do
+              if docker exec "$container" curl --fail --silent http://127.0.0.1:80 >/dev/null; then return; fi
+              sleep 1
+            done
+            docker logs "$container"
+            return 1
+          }
+
+          docker run --rm --entrypoint sh "$image" -c 'test ! -e /var/www/html/index.php'
+
+          docker run -d --name "$container" \
+            -e PUID=1030 -e PGID=100 -e FILES_GALLERY_ADMIN_PASSWORD=change-me \
+            -v "$PWD/test-media:/media:ro" -v "$PWD/test-config:/config" "$image"
+          wait_for_app
+          docker exec "$container" apachectl -t
+          docker exec "$container" sh -c "sha256sum /var/www/html/index.php | grep -q '^$FILES_GALLERY_SHA256'"
+          docker exec "$container" grep -F "Files Gallery $FILES_GALLERY_VERSION" /var/www/html/index.php
+          for extension in exif gd imagick mbstring zip; do
+            docker exec "$container" php -r "exit(extension_loaded('$extension') ? 0 : 1);"
+          done
+          docker exec "$container" sh -c 'convert -list format | grep -Eq "^[[:space:]]*JPEG"; convert -list format | grep -Eq "^[[:space:]]*TIFF"; ffmpeg -version >/dev/null'
+          docker exec "$container" sh -c 'su -s /bin/sh www-data -c "test -r /media && ls /media >/dev/null" && ! touch /media/__must_fail__'
+          docker exec "$container" sh -c 'test "$(stat -c "%U:%G %a" /config)" = "root:root 755"; test "$(stat -c "%a" /config/config)" = 700; test "$(stat -c "%a" /config/cache)" = 700; test "$(stat -c "%a" /config/users)" = 700'
+          docker exec "$container" php -l /config/config/config.php
+          docker exec "$container" php -l /config/users/admin/config.php
+          docker network disconnect bridge "$container"
+          docker restart "$container"
+          docker exec "$container" sh -c "sha256sum /var/www/html/index.php | grep -q '^$FILES_GALLERY_SHA256'"
+          docker rm -f "$container"
+          docker run -d --name "$container" \
+            -e PUID=1030 -e PGID=100 -e FILES_GALLERY_ADMIN_PASSWORD=change-me \
+            -v "$PWD/test-media:/media:ro" -v "$PWD/test-config:/config" "$image"
+          wait_for_app
+          docker exec "$container" sh -c "sha256sum /var/www/html/index.php | grep -q '^$FILES_GALLERY_SHA256'"
+          docker rm -f "$container"
+          sed 's/^FILES_GALLERY_SHA256=.*/FILES_GALLERY_SHA256=0000000000000000000000000000000000000000000000000000000000000000/' app/VERSION > bad-version
+          if docker run --rm -e PUID=1030 -e PGID=100 -e FILES_GALLERY_ADMIN_PASSWORD=change-me \
+            -v "$PWD/bad-version:/usr/local/share/filesgallery/VERSION:ro" "$image" true; then
+            echo "Container unexpectedly accepted an invalid Files Gallery checksum" >&2
+            exit 1
+          fi

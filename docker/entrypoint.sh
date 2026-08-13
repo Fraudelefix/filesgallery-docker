@@ -5,6 +5,77 @@ PUID="${PUID:-33}"
 PGID="${PGID:-33}"
 case "$PUID:$PGID" in *[!0-9:]*|:*|*:) echo "PUID and PGID must be numeric" >&2; exit 64;; esac
 
+METADATA_FILE="/usr/local/share/filesgallery/VERSION"
+INDEX_PATH="/var/www/html/index.php"
+
+load_upstream_metadata() {
+  if [ ! -r "$METADATA_FILE" ]; then
+    echo "Files Gallery metadata is missing: $METADATA_FILE" >&2
+    exit 66
+  fi
+  # shellcheck disable=SC1090
+  . "$METADATA_FILE"
+  case "${FILES_GALLERY_VERSION:-}:${FILES_GALLERY_UPSTREAM_COMMIT:-}:${FILES_GALLERY_SHA256:-}" in
+    *[!0-9.a-f:]*|::*|*:) echo "Files Gallery metadata is invalid" >&2; exit 66;;
+  esac
+  expected_url="https://raw.githubusercontent.com/mjau-mjau/files.photo.gallery/${FILES_GALLERY_UPSTREAM_COMMIT}/index.php"
+  if [ "${FILES_GALLERY_URL:-}" != "$expected_url" ]; then
+    echo "Files Gallery metadata URL is not pinned to its upstream commit" >&2
+    exit 66
+  fi
+  if ! printf '%s' "$FILES_GALLERY_SHA256" | grep -Eq '^[0-9a-f]{64}$'; then
+    echo "Files Gallery metadata has an invalid SHA-256" >&2
+    exit 66
+  fi
+}
+
+verify_upstream_index() {
+  candidate="$1"
+  actual_sha256="$(sha256sum "$candidate" | awk '{print $1}')" || return 1
+  if [ "$actual_sha256" != "$FILES_GALLERY_SHA256" ]; then
+    echo "Files Gallery index.php checksum mismatch" >&2
+    return 1
+  fi
+  if ! grep -F "Files Gallery $FILES_GALLERY_VERSION" "$candidate" >/dev/null; then
+    echo "Files Gallery index.php does not identify version $FILES_GALLERY_VERSION" >&2
+    return 1
+  fi
+}
+
+install_upstream_index() {
+  if [ -e "$INDEX_PATH" ]; then
+    if ! verify_upstream_index "$INDEX_PATH"; then
+      echo "Existing Files Gallery index.php is invalid; refusing to replace it" >&2
+      exit 67
+    fi
+    return
+  fi
+
+  temporary="$(mktemp /var/www/html/.filesgallery-index.XXXXXX)"
+  if ! curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
+      --connect-timeout 15 --retry 3 --retry-all-errors \
+      --output "$temporary" "$FILES_GALLERY_URL"; then
+    rm -f "$temporary"
+    echo "Failed to download Files Gallery from the pinned upstream URL" >&2
+    exit 67
+  fi
+  if ! verify_upstream_index "$temporary"; then
+    rm -f "$temporary"
+    echo "Downloaded Files Gallery index.php failed verification" >&2
+    exit 67
+  fi
+  chown root:root "$temporary"
+  chmod 0644 "$temporary"
+  mv -f "$temporary" "$INDEX_PATH"
+  if ! verify_upstream_index "$INDEX_PATH"; then
+    echo "Installed Files Gallery index.php failed final verification" >&2
+    exit 67
+  fi
+}
+
+load_upstream_metadata
+install_upstream_index
+
 # Apache master stays root to open port 80. Its workers subsequently run under
 # www-data, whose UID/GID are remapped to the NAS media owner.
 if ! getent group "$PGID" >/dev/null; then groupadd --gid "$PGID" filesgallery; fi

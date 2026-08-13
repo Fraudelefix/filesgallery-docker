@@ -1,341 +1,93 @@
-# Revue et stack Files Gallery — Synology DS920+ / DSM 7
+# Files Gallery Docker
 
-**Projet upstream : [Files Gallery — mjau-mjau/files.photo.gallery](https://github.com/mjau-mjau/files.photo.gallery)**
+This repository is an independent Docker packaging project that makes [Files Gallery](https://www.files.gallery/) easy to deploy. Files Gallery itself is developed by mjau-mjau and is not maintained here. No modifications are made to the original Files Gallery source code.
 
-Cette image exécute le fichier officiel Files Gallery **0.15.3** sur un unique
-conteneur Apache/PHP. `/media` reste la source de vérité et est monté en lecture
-seule; `/config` contient toutes les données applicatives persistantes.
+The Docker image does not contain the Files Gallery application. At container startup it downloads the original, unmodified index.php directly from a pinned upstream Git commit, verifies its version and SHA-256, then starts Apache.
 
-## 1. Résumé exécutif
+## Upstream Files Gallery
 
-L'architecture Apache mono-conteneur est adaptée au DS920+ et a été conservée.
-La revue a identifié trois corrections importantes, désormais appliquées :
+> Files is a single-file PHP app that can be dropped into any folder on server, instantly creating a gallery of files and folders. It supports all file types and allows you to preview images, video, audio, documents and text files.
 
-1. **CRITIQUE — Files Gallery 0.13.0 ne connaissait pas plusieurs options
-   configurées**, notamment `root_lock`, ImageMagick pour les images, et les
-   noms actuels des options. L'application est mise à niveau vers la version
-   officielle 0.15.3, dont le code implémente ces options.
-2. **CRITIQUE — `allow_settings=true` dans la configuration globale était
-   hérité par chaque nouvel utilisateur.** Tous les utilisateurs pouvaient donc
-   administrer les comptes et les réglages. L'administrateur est maintenant un
-   utilisateur distinct, seul à recevoir `allow_settings=true`; le profil par
-   défaut obligatoire est inutilisable et verrouille l'accès anonyme.
-3. **IMPORTANT — le mot de passe modèle était public dans Git.** La source de
-   vérité est désormais `FILES_GALLERY_ADMIN_PASSWORD` dans `compose.yaml`;
-   seul son hash `password_hash()` est persisté dans `/config`.
+> — [Files Gallery upstream project](https://github.com/mjau-mjau/files.photo.gallery)
 
-La révision corrige aussi la version réelle de Files Gallery, vérifie son
-SHA-256 pendant le build, épingle Imagick, retire `mod_rewrite` inutilisé et
-évite le `chown -R /config` à chaque redémarrage.
+- GitHub: https://github.com/mjau-mjau/files.photo.gallery
+- Website: https://www.files.gallery/
 
-## 2. Architecture actuelle
+## Features
 
-```text
-Navigateur ─ HTTPS/reverse proxy ─ Apache :80 (master root)
-                                       │
-                                       └─ mod_php / workers www-data = 1030:100
-                                             ├─ /media  ← NAS :ro
-                                             └─ /config ← NAS :rw
-```
+- Apache with PHP 8.3, ImageMagick/Imagick, FFmpeg, TIFF and HEIC preview support.
+- Synology-friendly PUID / PGID mapping: Apache stays root while PHP workers use the mapped www-data account.
+- Read-only /media mount and persistent /config storage.
+- Fixed admin account; its password is supplied through FILES_GALLERY_ADMIN_PASSWORD.
+- PHP extension and ImageMagick JPEG/TIFF smoke checks during image builds.
+- Common NAS and system files hidden from Files Gallery by default.
 
-`php:8.3.33-apache-bookworm` est une image officielle qui utilise Apache avec
-`mod_php` et MPM prefork. Apache est initialement lancé par root, écoute :80,
-puis lance les workers sous l'utilisateur défini par `APACHE_RUN_USER`
-(`www-data`). L'entrypoint change l'identité Unix de **www-data seulement**
-vers `PUID:PGID`; il ne faut surtout pas définir `user: "1030:100"` dans
-Compose. PHP s'exécute donc bien en `1030:100`, tandis que le master reste
-capable d'ouvrir le port et les logs.
+## How this image works
 
-Avec la permission Synology décrite (`drwx--x--x 1030:100`), cette identité
-propriétaire donne à PHP les droits de lecture et de liste requis. Le bind mount
-`:ro` interdit les modifications, même à cet UID.
+1. The image contains Apache, PHP, and the required runtime dependencies—not the Files Gallery application.
+2. At startup, the entrypoint reads its pinned version metadata and downloads the official Files Gallery 0.15.3 index.php over HTTPS.
+3. The file is checked against its SHA-256 and its declared Files Gallery version before an atomic install to /var/www/html/index.php; the installed file is checked again afterwards.
+4. A normal restart reuses the already verified file. A recreated container downloads and verifies it again.
+5. /media is the read-only media source; /config stores Files Gallery configuration and cache.
 
-## 3. Ce qui est correct
+If a download, checksum, version, or existing-file verification fails, the container exits without starting Apache.
 
-* `/media` est hors de `/var/www/html`: Apache ne peut pas le servir par URL.
-* `storage_path=/config` dans `_filesconfig.php` est le bon emplacement : Files
-  Gallery doit le résoudre **avant** de charger `/config/config/config.php`.
-* La structure effective est bien `/config/config`, `/config/cache` et
-  `/config/users/<nom>/config.php`; elle persiste à la recréation.
-* `load_files_proxy_php=true`, combiné à une racine hors DocumentRoot et à une
-  authentification obligatoire, protège les fichiers via le contrôle de session.
-* `allow_symlinks=false`, les opérations d'écriture désactivées et le volume
-  lecture seule sont cohérents avec une galerie de consultation.
-* FFmpeg sert aux miniatures vidéo; Files Gallery ne transcode pas une vidéo.
-  Monter `/dev/dri` ou utiliser l'iGPU ne procure donc aucun gain utile ici.
+## Docker Compose
 
-## 4. Risques et statut
+Use a dated image tag in production. The latest successful tag at the time of this documentation is 2026.08.13-4.
 
-| Niveau | Sujet | Décision |
-| --- | --- | --- |
-| CRITIQUE | Options 0.15 dans une application 0.13 | Corrigé : Files Gallery 0.15.3 officiel. |
-| CRITIQUE | Héritage de `allow_settings=true` | Corrigé : admin distinct, défaut à `false`. |
-| IMPORTANT | Secret initial public | Corrigé : lu depuis Compose, hashé dans `/config`. |
-| IMPORTANT | `load_images_max_filesize=0` | Corrigé à 256 MiB : 0 ne signifie pas illimité. |
-| IMPORTANT | `ffmpeg_path` 0.13 ignoré | Corrigé par mise à niveau 0.15.3. |
-| MINEUR | `chown -R` à chaque démarrage | Corrigé : seulement après un changement d'identité. |
-| OPTIONNEL | Ghostscript | Conservé pour PDF/PS; retirer si ces aperçus ne sont jamais nécessaires. |
-
-## 5. Vérification Files Gallery officielle
-
-La version 0.15.3 embarquée déclare `root_lock` comme chemin nullable et
-contrôle que tout `root` utilisateur reste à l'intérieur. Définir
-`'root_lock' => '/media'` dans `_filesconfig.php` est donc exact : le réglage
-est verrouillé avant les réglages éditables. `root` y est aussi défini pour que
-le GUI ne puisse pas déplacer la galerie hors de `/media`; sa répétition dans
-la configuration persistante a été supprimée.
-
-`dirs_include` et `dirs_exclude` sont évalués par PHP sur le chemin relatif à
-la racine, dans les actions JSON comme dans la navigation. Le code valide aussi
-le chemin réel contre la racine pour les requêtes contenant `..`. Ils constituent
-une restriction applicative serveur, pas une ACL Unix : pour une isolation entre
-utilisateurs hostiles, il faut des volumes/instances ou ACL NAS séparés.
-
-Par défaut, l'image masque les fichiers cachés Unix/macOS commençant par `.`,
-`Thumbs.db`, `desktop.ini` et les fichiers temporaires Office commençant par
-`~$`. Elle masque aussi les dossiers Synology `@eaDir`, les dossiers cachés
-commençant par `.`, `__MACOSX` et `$RECYCLE.BIN`. Il s'agit uniquement d'un
-filtrage d'affichage et d'accès Files Gallery : les originaux ne sont ni
-supprimés ni modifiés.
-
-Exemples dans `/config/users` :
-
-```php
-// Paul : seulement /media/Famille et ses descendants
-return [
-  'password' => '$2y$...hashé...',
-  'dirs_include' => '/^Famille(\\/|$)/u',
-  'allow_settings' => false,
-];
-```
-
-```php
-// Parents : toute la racine sauf /media/Privé
-return [
-  'password' => '$2y$...hashé...',
-  'dirs_exclude' => '/^Privé(\\/|$)/u',
-  'allow_settings' => false,
-];
-```
-
-L'administrateur est toujours le compte fixe `admin`, seul compte avec
-`allow_settings=true`; il peut créer les comptes depuis le GUI. Vérifier que
-chaque compte créé possède explicitement `allow_settings => false`.
-
-`load_images_max_filesize=0` ne veut pas dire « aucune limite » : dans le code
-0 interdit de renvoyer un original lorsque le format n'est pas redimensionnable
-ou lorsque la réduction est inutile. `268435456` (256 MiB) permet ces originaux
-raisonnablement gros; les TIFF/HEIC pris en charge passent normalement par
-ImageMagick et le cache plutôt que par l'original.
-
-## 6. Formats, PHP et Apache
-
-GD fournit JPEG/PNG/GIF/WebP; EXIF, mbstring et ZipArchive sont utiles. La
-version 0.15.3 utilise ImageMagick/Imagick pour les formats configurés non
-nativement web (`heif, heic, tiff, tif, psd, dng`) et écrit les miniatures dans
-`/config/cache/images`. L'original ne sera jamais réécrit, et le montage ro le
-garantit indépendamment de l'application.
-
-ImageMagick sous Bookworm doit être vérifié dans l'image réelle : TIFF est
-normalement présent; HEIC nécessite le délégué libheif (installé); PSD et DNG
-dépendent des délégués distribués par Debian et ne sont pas garantis sans test.
-Ghostscript est principalement utile aux miniatures PDF/PS. Il augmente la
-surface de parsing : conserver la politique Debian par défaut et ne l'assouplir
-que si les aperçus PDF sont explicitement nécessaires.
-
-PHP 8.3 est compatible avec Files Gallery 0.15.3. PHP 8.4 ne doit être envisagé
-qu'après validation d'Imagick et de tous les formats, pas comme mise à jour
-automatique. 512 MiB et 120 secondes constituent un point de départ réaliste
-pour le DS920+; augmenter seulement après échec reproductible d'un TIFF.
-
-Apache seul reste préférable à nginx+FPM : aucun besoin fonctionnel ne justifie
-un second conteneur. `mod_rewrite` n'était pas utilisé et a été retiré. Les
-en-têtes actuels (`nosniff`, `same-origin`, `SAMEORIGIN`) ne cassent pas les
-assets Files Gallery. Ne pas ajouter une CSP stricte sans test : les assets sont
-par défaut chargés depuis JSDelivr.
-
-## 7. Analyse fichier par fichier
-
-| Fichier | Revue |
-| --- | --- |
-| `app/index.php` | Source officielle 0.15.3, version et SHA-256 consignés dans `app/VERSION`. C'est indispensable : la 0.13.0 ne mettait pas en œuvre plusieurs options déjà configurées. |
-| `docker/_filesconfig.php` | Correct et volontairement immuable : verrouille `storage_path`, `root` et `root_lock` avant la configuration administrable. |
-| `docker/config.php` | Configuration globale persistante initiale. Écriture média désactivée; aucun mot de passe clair; `allow_settings=false`. |
-| `docker/admin-config.php` | Modèle du seul utilisateur administrateur, avec `allow_settings=true`. |
-| `docker/entrypoint.sh` | Remappe `www-data`, initialise les deux configs et synchronise uniquement le hash du mot de passe admin depuis Compose. Il garde `/config` sous `root:root` et ne reprend récursivement que les trois sous-répertoires applicatifs après un changement d'identité. |
-| `docker/php-filesgallery.ini` | 512 MiB/120 s pour les aperçus, upload limité parce qu'inutilisé, sessions dans `/tmp`. |
-| `docker/apache-filesgallery.conf` | Pas d'index de répertoire, pas de `.htaccess`, bootstrap `_filesconfig.php` explicitement refusé; `/config` et `/media` sont hors DocumentRoot. |
-| `Dockerfile` | PHP exact, extensions/fournisseurs ImageMagick, Imagick exact, vérification SHA-256 de l'application et smoke tests des extensions/formats au build; `mod_rewrite` supprimé. |
-| `compose.yaml` | Les `PUID/PGID` sont effectivement consommés; le mot de passe admin est la source de vérité; `no-new-privileges` reste compatible. |
-
-## 8. Dockerfile et entrypoint
-
-Le Dockerfile installe les bibliothèques runtime et les en-têtes de compilation,
-compile GD, Imagick 3.8.1, puis supprime les paquets `-dev`. Il conserve
-explicitement `libzip4`, bibliothèque runtime de `zip.so` sous Debian Bookworm,
-ainsi que `libonig5` pour mbstring. Le build exécute `php -m`, vérifie `exif`,
-`gd`, `imagick`, `mbstring` et `zip`, contrôle les dépendances de `zip.so` avec
-`ldd`, puis vérifie `convert`, JPEG, TIFF et `ffmpeg`. Le tag PHP précis stabilise la
-version PHP; pour une reproductibilité binaire absolue, remplacer `PHP_IMAGE`
-par un digest amd64 vérifié, au prix de ne plus recevoir les correctifs de base
-tant que ce digest n'est pas mis à jour explicitement.
-
-L'entrypoint est idempotent : groupe existant par GID accepté et UID existant
-différent refusé explicitement. `/config` reste `root:root` en `0755`; seuls
-`/config/config`, `/config/cache` et `/config/users` sont `www-data:<PGID>` en
-`0700`. Une reprise récursive, déclenchée seulement lorsque `PUID:PGID` change,
-est strictement limitée à ces trois sous-répertoires. Cela sépare l'espace
-Docker Synology du compte qui lit `/media:ro`. Avant de démarrer Apache,
-l'entrypoint confirme que `www-data` peut écrire dans chacun de ces répertoires.
-Les écritures de configuration sont atomiques et les configurations PHP
-existantes invalides font échouer le démarrage sans être écrasées. Les sessions
-utilisent `/tmp`; aucune session ne doit être sauvegardée.
-
-`no-new-privileges:true` est compatible : il interdit à un processus d'acquérir
-de nouveaux privilèges à l'exécution (setuid, file capabilities), mais ne retire
-pas les privilèges déjà détenus par PID 1 root. `groupadd`, `usermod` et `chown`
-fonctionnent donc avant Apache. Ne pas ajouter `cap_drop: ALL` ni `read_only`
-dans cette variante : l'entrypoint et Apache nécessitent des capacités et des
-écritures runtime. Un durcissement supplémentaire demanderait une architecture
-non-root préparée à la construction, qui complique précisément le problème UID.
-
-## 9. Déploiement
-
-1. Copiez le projet dans `/volume2/docker/filesgallery-src`; créez
-   `/volume2/docker/filesgallery/config`.
-2. Dans `compose.yaml`, remplacez `FILES_GALLERY_ADMIN_PASSWORD: "changeme"`
-   par un mot de passe long et unique avant toute exposition réseau. Cette
-   valeur est la source de vérité : elle est lue à chaque démarrage, hashée avec
-   `password_hash()` et le mot de passe en clair n'est jamais écrit dans
-   `/config`.
-3. Déployez `compose.yaml` dans Container Manager ou Portainer. Le premier
-   lancement génère deux hashes : un compte par défaut désactivé et le vrai
-   compte administrateur fixe `/config/users/admin/config.php`.
-4. Accédez à `http://IP_DU_NAS:8083/`, connectez-vous, créez les utilisateurs
-   puis placez le service derrière le reverse proxy DSM HTTPS. N'exposez pas
-   8083 directement sur Internet.
-
-### Image publiée dans GHCR
-
-Le workflow GitHub Actions **Publish Docker image** construit le Dockerfile à
-la racine et publie uniquement lors d'un tag Git au format `YYYY.MM.DD` ou
-`YYYY.MM.DD-N` (par exemple `2026.08.13-2`). Il cible explicitement `linux/amd64`, l'architecture du Synology
-DS920+, et réutilise le cache BuildKit GitHub Actions. Une exécution manuelle
-du workflow construit seulement l'image : elle ne publie aucun tag.
-
-Pour publier une release, après avoir vérifié le workflow :
-
-```sh
-git tag 2026.08.13-2
-git push origin 2026.08.13-2
-```
-
-GitHub Actions publie alors :
-
-```text
-ghcr.io/fraudelefix/filesgallery-docker:2026.08.13-2
-ghcr.io/fraudelefix/filesgallery-docker:latest
-```
-
-Le workflow ajoute les métadonnées OCI de source, révision, date de création
-et version. Le `GITHUB_TOKEN` suffit à publier grâce aux permissions
-`contents: read` et `packages: write`; aucun PAT n'est requis. La visibilité
-publique du package ne se règle pas proprement depuis ce workflow : après la
-première publication, ouvrez le package dans GitHub puis **Package settings**
-→ **Change visibility** → **Public**. Cette opération est à faire une seule
-fois pour permettre au Synology de tirer l'image sans authentification.
-
-Sur Synology, un projet consommateur peut utiliser l'image publiée sans section
-`build` :
-
-```yaml
+~~~yaml
 services:
   filesgallery:
-    image: ghcr.io/fraudelefix/filesgallery-docker:2026.08.13-2
+    image: ghcr.io/fraudelefix/filesgallery-docker:2026.08.13-4
+    container_name: filesgallery
+    hostname: filesgallery
+    restart: unless-stopped
+
+    ports:
+      - "8083:80"
+
     environment:
       PUID: "1030"
       PGID: "100"
       TZ: "Europe/Paris"
-      FILES_GALLERY_ADMIN_PASSWORD: "changeme"
+      FILES_GALLERY_ADMIN_PASSWORD: "change-me"
+
     volumes:
       - "/etc/localtime:/etc/localtime:ro"
       - "/volume2/docker/filesgallery/config:/config"
       - "/volume1/homes/Victor/Numerisation:/media:ro"
-```
 
-Préférer un tag daté à `latest` en production. En cas de régression de
-`2026.08.13-2`, remettre `:2026.08.13` puis recréer le conteneur; ne supprimez
-jamais le volume `/config` pendant ce rollback.
+    security_opt:
+      - no-new-privileges:true
+~~~
 
-## 10. Tests de validation
+Set PUID and PGID to the NAS user that owns the media, choose a strong admin password, and adapt both NAS paths. /media deliberately remains read-only: this image does not delete or modify original media.
 
-```sh
-docker compose ps
-docker logs filesgallery
-docker exec filesgallery id www-data
-docker exec filesgallery ps -eo user:16,pid,comm,args
-docker exec filesgallery ls -ld /media /config
-docker exec filesgallery sh -c 'su -s /bin/sh www-data -c "ls -la /media"'
-docker exec filesgallery php -r 'var_dump(is_dir("/media"), is_readable("/media"), realpath("/media"));'
-docker exec filesgallery sh -c 'touch /media/__must_fail__' # doit échouer
-docker exec filesgallery php -m | grep -E 'exif|gd|imagick|mbstring|zip'
-docker exec filesgallery sh -c 'convert -version; convert -list format | grep -Ei "TIFF|HEIC|HEIF|PSD|DNG"'
-docker exec filesgallery sh -c 'identify /media/chemin/test.tif'
-docker exec filesgallery ffmpeg -version
-curl -i http://127.0.0.1:8083/
-curl -i http://127.0.0.1:8083/_filesconfig.php # 403 attendu
-curl -i http://127.0.0.1:8083/config/           # 404 attendu
-curl -i http://127.0.0.1:8083/media/            # 404 attendu
-```
+## Configuration
 
-### Test de synchronisation du mot de passe admin
+/config is persistent and remains owned by root:root (0755). Files Gallery's writable directories are /config/config, /config/cache, and /config/users; they are owned by the remapped www-data account (0700).
 
-Avant le changement, relever une empreinte des réglages admin hors mot de
-passe :
+The admin username is always admin. FILES_GALLERY_ADMIN_PASSWORD is the password source of truth: at every start, only the admin password hash is synchronised. ACLs and other per-user settings are preserved. Plain-text passwords are never stored in /config.
 
-```sh
-docker exec filesgallery php -r '$c=include "/config/users/admin/config.php"; unset($c["password"]); echo hash("sha256", serialize($c)), PHP_EOL;'
-```
+## Default exclusions
 
-Remplacer dans `compose.yaml` `FILES_GALLERY_ADMIN_PASSWORD: "changeme"` par
-la nouvelle valeur, puis recréer le service (`docker compose up -d
---force-recreate`, ou **Redeploy** dans Portainer/Container Manager). Vérifier
-le nouveau mot de passe et relever à nouveau l'empreinte :
+Files Gallery hides these entries by default:
 
-```sh
-docker exec filesgallery php -r '$c=include "/config/users/admin/config.php"; var_dump(password_verify("NOUVEAU_MOT_DE_PASSE", $c["password"])); unset($c["password"]); echo hash("sha256", serialize($c)), PHP_EOL;'
-```
+- Directories: hidden directories beginning with ., @eaDir, __MACOSX, and $RECYCLE.BIN.
+- Files: files beginning with ., Thumbs.db, desktop.ini, and Office temporary files beginning with ~$.
 
-`bool(true)` est attendu et les deux empreintes doivent être identiques : seule
-la clé `password` a été modifiée. Les sessions existantes sont invalidées au
-redémarrage, car Files Gallery les lie au hash de mot de passe.
+This is only Files Gallery display/access filtering. Nothing in /media is deleted or changed.
 
-Connectez-vous ensuite comme Paul et utilisez un deeplink vers `Vacances` puis
-`Privé`; contrôlez l'absence de fichiers retournés. Connectez-vous comme Parents
-et vérifiez que seul `Privé` est refusé. Enfin, ouvrez TIFF, HEIC et vidéo réels
-et confirmez la création de fichiers sous `/config/cache/images` sans variation
-de date ou hash de l'original.
+## Updating and versioning
 
-## 11. Mise à jour, rollback et backup
+Git tags use YYYY.MM.DD or YYYY.MM.DD-N and publish matching GHCR image tags. latest is also updated for a successful tagged publication, but production deployments should use a dated tag. To roll back, switch the image tag in Compose and recreate the container; keep /config intact.
 
-Pour Files Gallery, télécharger explicitement la nouvelle version dans
-`app/index.php`, mettre à jour `app/VERSION`, `FILES_GALLERY_VERSION` dans
-Dockerfile et `image:` dans Compose, puis rebâtir. Le build vérifie le SHA-256.
-Conserver les tags précédents (`filesgallery-local:0.15.3`) jusqu'à validation.
-Pour PHP/Debian/ImageMagick/FFmpeg, modifier `PHP_IMAGE` ou reconstruire après
-avoir consulté les changelogs, exécuter la checklist, puis seulement supprimer
-l'image précédente.
+The pinned upstream dependency is defined in [app/VERSION](app/VERSION). It records the Files Gallery version, upstream commit, raw GitHub URL, and SHA-256. The upstream index.php is intentionally not stored in this repository or baked into the image.
 
-Sauvegarder impérativement `/volume2/docker/filesgallery/config` :
-`config/config.php`, `users/`, assets/personnalisations éventuels et cache. Le
-cache est recréable, les configs utilisateurs ne le sont pas. Sauvegarder aussi
-ce dépôt, incluant Dockerfile, Compose, `docker/*`, `app/index.php` et
-`app/VERSION`; ils définissent exactement l'application reconstruisible.
+## Credits
 
-## Références
+Files Gallery is developed by [mjau-mjau](https://github.com/mjau-mjau). This repository is an independent Docker packaging project and is not affiliated with or endorsed by the upstream author.
 
-* [Configuration Files Gallery](https://www.files.gallery/docs/config/)
-* [Stockage Files Gallery](https://www.files.gallery/docs/storage/)
-* [Utilisateurs Files Gallery](https://www.files.gallery/docs/users/)
-* [Sécurité Files Gallery](https://www.files.gallery/docs/security/)
-* [Image PHP officielle](https://hub.docker.com/_/php/)
+- https://github.com/mjau-mjau/files.photo.gallery
+- https://www.files.gallery/

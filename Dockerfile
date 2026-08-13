@@ -1,16 +1,14 @@
 ARG PHP_IMAGE=php:8.3.33-apache-bookworm
 FROM ${PHP_IMAGE}
 
-ARG FILES_GALLERY_VERSION=0.15.3
 ARG IMAGICK_VERSION=3.8.1
 
 LABEL org.opencontainers.image.title="Files Gallery local" \
       org.opencontainers.image.description="Files Gallery officiel sur Apache/PHP" \
-      org.opencontainers.image.version="${FILES_GALLERY_VERSION}" \
       org.opencontainers.image.source="https://github.com/Fraudelefix/filesgallery-docker"
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg ghostscript imagemagick \
+    && apt-get install -y --no-install-recommends curl ffmpeg ghostscript imagemagick \
         libfreetype6-dev libheif1 libjpeg62-turbo-dev libmagickwand-dev libonig-dev \
         libonig5 libpng-dev libwebp-dev libzip-dev libzip4 \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
@@ -37,16 +35,18 @@ COPY docker/entrypoint.sh /usr/local/bin/filesgallery-entrypoint
 COPY docker/config.php /usr/local/share/filesgallery/config.php
 COPY docker/admin-config.php /usr/local/share/filesgallery/admin-config.php
 COPY app/VERSION /usr/local/share/filesgallery/VERSION
-COPY app/index.php /var/www/html/index.php
 COPY docker/_filesconfig.php /var/www/html/_filesconfig.php
 
 RUN a2enconf filesgallery \
     && chmod 0555 /usr/local/bin/filesgallery-entrypoint \
-    && chown root:root /var/www/html/index.php /var/www/html/_filesconfig.php \
-    && build_version="$FILES_GALLERY_VERSION" \
+    && chown root:root /var/www/html/_filesconfig.php \
     && . /usr/local/share/filesgallery/VERSION \
-    && test "$FILES_GALLERY_VERSION" = "$build_version" \
-    && echo "$FILES_GALLERY_SHA256  /var/www/html/index.php" | sha256sum -c -
+    && test -n "$FILES_GALLERY_VERSION" \
+    && test -n "$FILES_GALLERY_UPSTREAM_COMMIT" \
+    && test -n "$FILES_GALLERY_SHA256" \
+    && test -n "$FILES_GALLERY_URL" \
+    && command -v curl \
+    && test ! -e /var/www/html/index.php
 
 EXPOSE 80
 ENTRYPOINT ["filesgallery-entrypoint"]
