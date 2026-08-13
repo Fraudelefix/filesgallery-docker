@@ -44,14 +44,12 @@ final class FilesGalleryAclIntegration
     public static function excluded(string $logicalPath, bool $isDir): bool
     {
         if (!self::$ready) self::fail('ACL was not initialized.');
-        if (str_contains($logicalPath, '/Family')) error_log('Files Gallery ACL: filter start ' . $logicalPath);
         $logical = self::relative($logicalPath);
         if ($logical === null) return true;
         if ($logical === '') return false; // application shell/root navigation; children remain filtered.
         if (!self::allowed($logical, $isDir)) return true;
 
         $canonical = Path::realpath($logicalPath);
-        if (str_contains($logicalPath, '/Family')) error_log('Files Gallery ACL: filter canonical ' . $logicalPath);
         $canonicalRelative = $canonical === false ? null : self::relative($canonical);
         return $canonicalRelative === null || !self::allowed($canonicalRelative, $isDir);
     }
