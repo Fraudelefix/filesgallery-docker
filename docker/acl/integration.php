@@ -86,6 +86,7 @@ final class FilesGalleryAclIntegration
 
     private static function fail(string $message): never
     {
+        error_log('Files Gallery ACL: ' . $message);
         if (class_exists('U')) U::error($message, 500);
         throw new RuntimeException($message);
     }
