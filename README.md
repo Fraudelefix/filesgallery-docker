@@ -68,6 +68,8 @@ The admin username is always admin. FILES_GALLERY_ADMIN_PASSWORD is the password
 
 Files Gallery diagnostics/tests are disabled globally and enabled by default for the built-in admin account only.
 
+New users created from Settings/User Manager inherit the default NAS/system exclusion regexes. Those users can edit their own regexes afterwards, for example to add a private-folder exclusion.
+
 ## Default exclusions
 
 Files Gallery hides these entries by default:
