@@ -1,13 +1,16 @@
 <?php
 // Copié une seule fois vers /config/config/config.php par l'entrypoint.
+// Le compte par défaut est volontairement inutilisable : le vrai administrateur
+// est /config/users/admin/config.php. Ainsi les comptes
+// créés ensuite n'héritent jamais de allow_settings=true.
 return [
-    'root' => '/media',
-    'root_lock' => '/media',
-    'username' => 'victor-admin',
-    'password' => 'CHANGE-ME-BEFORE-FIRST-START',
+    'username' => '__filesgallery_disabled_default__',
+    'password' => '__FILES_GALLERY_DISABLED_PASSWORD_HASH__',
     'load_files_proxy_php' => true,
     'load_images' => true,
-    'load_images_max_filesize' => 0,
+    // 0 n'est pas « illimité » : cela empêcherait de servir un original non
+    // redimensionnable. 32 MiB couvre notamment les TIFF modestes.
+    'load_images_max_filesize' => 33554432,
     'image_resize_enabled' => true,
     'image_resize_use_imagemagick' => true,
     'imagemagick_prefer_imagick' => true,
@@ -45,7 +48,7 @@ return [
     'allow_mass_download' => false,
     'allow_mass_copy_links' => false,
     'download_dir' => '',
-    'allow_settings' => true,
+    'allow_settings' => false,
     'allow_check_updates' => false,
     'allow_tests' => false,
     'allow_tasks' => false,
