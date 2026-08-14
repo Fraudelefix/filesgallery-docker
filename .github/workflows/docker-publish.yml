@@ -101,10 +101,6 @@ jobs:
           printf 'video content\n' > test-media/Videos/video.txt
           printf 'other secret\n' > test-media/Other/other.txt
           printf 'test media\n' > test-media/photo.jpg
-          # Valid 1x1 JPEGs. `_filespreview.jpg` is Files Gallery's supported,
-          # deterministic folder-preview default and is visible only to broad.
-          printf '%s' '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/Aaf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/Aaf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/Ar//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IV//2gAMAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8QH//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8QH//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8QH//Z' | base64 -d > test-media/Family/_filespreview.jpg
-          cp test-media/Family/_filespreview.jpg test-media/Family/Shared/preview.jpg
           ln -s ../Private test-media/Family/Shared/link
           php -r 'file_put_contents("test-config/users/victor/config.php", "<?php\nreturn [\x27password\x27 => " . var_export(password_hash("victor-test-password", PASSWORD_DEFAULT), true) . "];\n");'
           for user in broad narrow missing-acl empty-acl bad-acl; do
@@ -129,6 +125,8 @@ jobs:
           }
 
           docker run --rm --entrypoint sh "$image" -c 'test ! -e /var/www/html/index.php'
+          docker run --rm --entrypoint convert "$image" -size 2x2 xc:red jpeg:- > test-media/Family/_filespreview.jpg
+          cp test-media/Family/_filespreview.jpg test-media/Family/Shared/preview.jpg
 
           docker run -d --name "$container" \
             -e PUID=1030 -e PGID=100 -e FILES_GALLERY_ADMIN_PASSWORD=change-me \
