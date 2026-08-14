@@ -213,19 +213,32 @@ jobs:
           for user in missing-acl empty-acl bad-acl; do
             acl_hash="$(login_user "$user" "$user-test-password")"; list_dir "/tmp/fg-$user.cookie" Family "$acl_hash" > "$user.json"; ! grep -q 'Shared\|Private\|parent.txt' "$user.json"
           done
+          echo 'ACL TEST: download/text, unauthenticated and admin path safety'
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=download&file=Family/Shared/shared.txt"' | grep -q 'shared content'
+          ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=download&file=Family/Private/secret.txt"' | grep -q 'private secret'
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-cookie -d "file=Family/Shared/shared.txt" "http://127.0.0.1:80?action=load_text_file"' | grep -q 'shared content'
+          ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent "http://127.0.0.1:80?action=file&file=Family/Private/secret.txt"' | grep -q 'private secret'
+          admin_hash="$(login_user admin change-me)"; test -n "$admin_hash"
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=file&file=Family/Private/secret.txt"' | grep -q 'private secret'
+          ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=file&file=../etc/passwd"' | grep -q 'root:'
           if docker run --rm --entrypoint php "$image" /usr/local/share/filesgallery/acl/patch.php /usr/local/share/filesgallery/acl/acl.php /tmp/out; then
             echo "ACL patch unexpectedly accepted an invalid upstream source" >&2
             exit 1
           fi
           docker network disconnect bridge "$container"
           docker restart "$container"
+          wait_for_app
           docker exec "$container" sh -c "sha256sum /usr/local/share/filesgallery/upstream-index.php | grep -q '^$FILES_GALLERY_SHA256'; grep -q FILESGALLERY_ACL_INIT_V1 /var/www/html/index.php"
+          restart_hash="$(login_user victor victor-test-password)"; list_dir /tmp/fg-victor.cookie Family "$restart_hash" > restart-family.json
+          grep -q Shared restart-family.json; ! grep -q 'parent.txt\|Private' restart-family.json
           docker rm -f "$container"
           docker run -d --name "$container" \
             -e PUID=1030 -e PGID=100 -e FILES_GALLERY_ADMIN_PASSWORD=change-me \
             -v "$PWD/test-media:/media:ro" -v "$PWD/test-config:/config" "$image"
           wait_for_app
           docker exec "$container" sh -c "sha256sum /usr/local/share/filesgallery/upstream-index.php | grep -q '^$FILES_GALLERY_SHA256'; grep -q FILESGALLERY_ACL_INIT_V1 /var/www/html/index.php"
+          recreate_hash="$(login_user victor victor-test-password)"; list_dir /tmp/fg-victor.cookie Family "$recreate_hash" > recreate-family.json
+          grep -q Shared recreate-family.json; ! grep -q 'parent.txt\|Private' recreate-family.json
           docker rm -f "$container"
           sed 's/^FILES_GALLERY_SHA256=.*/FILES_GALLERY_SHA256=0000000000000000000000000000000000000000000000000000000000000000/' app/VERSION > bad-version
           if docker run --rm -e PUID=1030 -e PGID=100 -e FILES_GALLERY_ADMIN_PASSWORD=change-me \
