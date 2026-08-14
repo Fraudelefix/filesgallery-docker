@@ -101,7 +101,10 @@ jobs:
           printf 'video content\n' > test-media/Videos/video.txt
           printf 'other secret\n' > test-media/Other/other.txt
           printf 'test media\n' > test-media/photo.jpg
-          printf '\377\330\377\340\000\020JFIF\000\001\001\000\000\001\000\001\000\000\377\331' > test-media/Family/Shared/preview.jpg
+          # Valid 1x1 JPEGs. `_filespreview.jpg` is Files Gallery's supported,
+          # deterministic folder-preview default and is visible only to broad.
+          printf '%s' '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/Aaf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/Aaf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/Ar//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IV//2gAMAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8QH//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8QH//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8QH//Z' | base64 -d > test-media/Family/_filespreview.jpg
+          cp test-media/Family/_filespreview.jpg test-media/Family/Shared/preview.jpg
           ln -s ../Private test-media/Family/Shared/link
           php -r 'file_put_contents("test-config/users/victor/config.php", "<?php\nreturn [\x27password\x27 => " . var_export(password_hash("victor-test-password", PASSWORD_DEFAULT), true) . "];\n");'
           for user in broad narrow missing-acl empty-acl bad-acl; do
@@ -118,7 +121,7 @@ jobs:
           trap 'docker rm -f "$container" 2>/dev/null || true' EXIT
           wait_for_app() {
             for _ in {1..20}; do
-              if docker exec "$container" curl --fail --silent http://127.0.0.1:80 >/dev/null; then return; fi
+              if docker exec "$container" curl --connect-timeout 5 --max-time 15 --fail --silent http://127.0.0.1:80 >/dev/null; then return; fi
               sleep 1
             done
             docker logs "$container"
@@ -153,10 +156,10 @@ jobs:
           docker exec "$container" php -r '$config=include "/config/config/config.php"; $files=$config["files_exclude"] ?? ""; $dirs=$config["dirs_exclude"] ?? ""; exit(preg_match($files, ".env") && preg_match($files, "Thumbs.db") && !preg_match($files, "photo.jpg") && preg_match($dirs, "Photos/@eaDir") && preg_match($dirs, "Photos/.cache") && !preg_match($dirs, "Album.2025") ? 0 : 1);'
           docker exec "$container" php -r '$config=include "/var/www/html/_filesconfig.php"; $template=$config["settings_editor"]["template"] ?? ""; $files=base64_decode("ICAnZmlsZXNfZXhjbHVkZScgPT4gJy8oXnxcLykoXC58VGh1bWJzXC5kYiR8ZGVza3RvcFwuaW5pJHx+XCQpL2knLA=="); $dirs=base64_decode("ICAnZGlyc19leGNsdWRlJyA9PiAnLyhefFwvKShAZWFEaXJ8Wy5dW15cL10qfF9fTUFDT1NYfFwkUkVDWUNMRVwuQklOKShcL3wkKS9pJyw="); exit(str_contains($template, $files) && str_contains($template, $dirs) ? 0 : 1);'
           # Files Gallery intentionally replies 401 while showing its login form.
-          docker exec "$container" sh -c 'curl --silent -c /tmp/fg-cookie http://127.0.0.1:80' > login-form.html
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -c /tmp/fg-cookie http://127.0.0.1:80' > login-form.html
           token="$(sed -n 's/.*name="token" value="\([^"]*\)".*/\1/p' login-form.html)"
           test -n "$token"
-          if ! docker exec "$container" sh -c "curl --fail-with-body --silent -b /tmp/fg-cookie -c /tmp/fg-cookie -d 'fusername=victor&fpassword=victor-test-password&token=$token' http://127.0.0.1:80" > login-response.html; then
+          if ! docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail-with-body --silent -b /tmp/fg-cookie -c /tmp/fg-cookie -d 'fusername=victor&fpassword=victor-test-password&token=$token' http://127.0.0.1:80" > login-response.html; then
             cat login-response.html
             docker logs "$container"
             docker exec "$container" cat /var/log/apache2/error.log || true
@@ -177,13 +180,13 @@ jobs:
           ! grep -q 'parent.txt\|Private' family.json
           echo 'ACL test: allowed direct file'
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=file&file=Family/Shared/shared.txt"' | grep -q 'shared content'
-          ! docker exec "$container" sh -c 'curl --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=file&file=Family/parent.txt"' | grep -q 'parent secret'
-          ! docker exec "$container" sh -c 'curl --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=download&file=Family/Private/secret.txt"' | grep -q 'private secret'
+          ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=file&file=Family/parent.txt"' | grep -q 'parent secret'
+          ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=download&file=Family/Private/secret.txt"' | grep -q 'private secret'
           ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-cookie -d "file=Other/other.txt" "http://127.0.0.1:80?action=load_text_file"' | grep -q 'other secret'
-          docker exec "$container" sh -c 'curl --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=preview&dir=Family"' | grep -q 'ACL preview access denied'
-          ! docker exec "$container" sh -c 'curl --silent "http://127.0.0.1:80/media/Family/Private/secret.txt"' | grep -q 'private secret'
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=preview&dir=Family"' | grep -q 'ACL preview access denied'
+          ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent "http://127.0.0.1:80/media/Family/Private/secret.txt"' | grep -q 'private secret'
           ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent "http://127.0.0.1:80/config/users/victor/config.php"' | grep -q 'password'
-          ! docker exec "$container" sh -c 'curl --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=file&file=../etc/passwd"' | grep -q 'root:'
+          ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=file&file=../etc/passwd"' | grep -q 'root:'
           ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=file&file=%2e%2e%2fetc%2fpasswd"' | grep -q 'root:'
           ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=file&file=Family%5CPrivate%5Csecret.txt"' | grep -q 'private secret'
           ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-cookie "http://127.0.0.1:80?action=file&file=Family/Shared/link/secret.txt"' | grep -q 'private secret'
@@ -201,10 +204,21 @@ jobs:
           }
           broad_hash="$(login_user broad broad-test-password)"; list_dir /tmp/fg-broad.cookie Family "$broad_hash" > broad-family.json
           grep -q 'parent.txt\|Private' broad-family.json
+          echo 'ACL TEST: allowed and cached folder previews'
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -D /tmp/broad-preview.headers -b /tmp/fg-broad.cookie "http://127.0.0.1:80?action=preview&dir=Family"' > broad-preview.jpg
+          test -s broad-preview.jpg
+          docker exec "$container" sh -c 'grep -qi "^Content-Type: image/" /tmp/broad-preview.headers; find /config/cache/images -type f -size +0c | grep -q .'
           narrow_hash="$(login_user narrow narrow-test-password)"; list_dir /tmp/fg-narrow.cookie Family "$broad_hash" > narrow-stale.json
           ! grep -q 'parent.txt\|Private' narrow-stale.json; grep -q 'Shared' narrow-stale.json
           list_dir /tmp/fg-narrow.cookie Family "$narrow_hash" > narrow-family.json
           ! grep -q 'parent.txt\|Private' narrow-family.json; grep -q 'Shared' narrow-family.json
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -D /tmp/shared-preview.headers -b /tmp/fg-narrow.cookie "http://127.0.0.1:80?action=preview&dir=Family/Shared"' > shared-preview.jpg
+          test -s shared-preview.jpg
+          docker exec "$container" sh -c 'grep -qi "^Content-Type: image/" /tmp/shared-preview.headers'
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -D /tmp/narrow-preview.headers -b /tmp/fg-narrow.cookie "http://127.0.0.1:80?action=preview&dir=Family"' > narrow-preview.txt
+          grep -q 'ACL preview access denied' narrow-preview.txt
+          ! docker exec "$container" sh -c 'grep -qi "^Content-Type: image/" /tmp/narrow-preview.headers'
+          ! cmp -s broad-preview.jpg narrow-preview.txt
           docker exec "$container" sh -c "printf '%s' \"<?php return ['allow' => ['Family/Shared']];\" > /config/users/broad/acl.php"
           sleep 2 # PHP OPcache validates file timestamps at a one-second granularity.
           broad_changed_hash="$(login_user broad broad-test-password)"; test "$broad_changed_hash" != "$broad_hash"

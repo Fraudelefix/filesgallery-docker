@@ -8,15 +8,15 @@
 | Listing / fichier autorisé | Oui | Oui | Non | TESTED | `victor`, `Family/Shared` |
 | Fichier, download, texte refusés | Oui | Oui | Non | TESTED | Corps autorisés et secrets refusés |
 | Ancêtre traverse-only / descendant lisible | Oui | Partiel | Non | PARTIALLY TESTED | Le listing le couvre partiellement |
-| Preview refusée / autorisée / cache | Oui | Refus seul | Non | PARTIALLY TESTED | Aucun média de preview réel ni cache partagé |
-| Hash menu stale / étranger | Oui | Non | Non | PARTIALLY TESTED | Cache-miss implémenté, non exercé HTTP |
-| Cache broad/narrow et changement ACL | Oui | Non | Non | NOT TESTED | À ajouter |
-| Symlink, canonique hors racine | Oui | Non | Non | PARTIALLY TESTED | Adapter uniquement |
-| Traversal, encodé, backslash | Oui | Partiel | Non | PARTIALLY TESTED | Seulement `../` initialement |
+| Preview refusée / autorisée / cache | Oui | Oui | Non | TESTED | JPEG réel, cache broad vérifié avant refus narrow |
+| Hash menu stale / étranger | Oui | Oui | Non | TESTED | Hash broad envoyé par narrow, résultat current-only |
+| Cache broad/narrow et changement ACL | Oui | Oui | Non | TESTED | Corps JSON et namespace vérifiés |
+| Symlink, canonique hors racine | Oui | Oui | Non | TESTED | Symlink réel vers `Private` refusé |
+| Traversal, encodé, backslash | Oui | Oui | Non | TESTED | Corps secrets absents |
 | Non authentifié / utilisateur défaut | Non | Partiel | Non | PARTIALLY TESTED | Non authentifié vérifié ; défaut désactivé par conception |
 | ACL missing / empty / malformed | Partiel | Oui | Non | TESTED | Authentification puis listing fermé |
 | Admin valide / invalide | Oui | Oui | Non | TESTED | Bypass lisible, traversal refusé |
-| Bypass direct `/media`, `/config`, cache | Non | Partiel | Non | PARTIALLY TESTED | `/media` seul initialement |
+| Bypass direct `/media`, `/config`, cache | Non | Oui | Non | TESTED | `/media` et `/config` inaccessibles |
 | Redémarrage / recréation avec ACL | Non | Oui | Oui | TESTED | Listing ACL après restart isolé et recreate |
 | SHA erroné, ancre, syntaxe, marqueurs | Non | Oui | N/A | TESTED | Entrypoint et patch déterministe |
 
