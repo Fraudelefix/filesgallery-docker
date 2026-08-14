@@ -125,8 +125,10 @@ jobs:
           }
 
           docker run --rm --entrypoint sh "$image" -c 'test ! -e /var/www/html/index.php'
-          docker run --rm --entrypoint convert "$image" -size 2x2 xc:red jpeg:- > test-media/Family/_filespreview.jpg
-          cp test-media/Family/_filespreview.jpg test-media/Family/Shared/preview.jpg
+          # The broad-only image is directly in Family, so the normal preview
+          # candidate scan generates Files Gallery's folder-preview cache.
+          docker run --rm --entrypoint convert "$image" -size 2x2 xc:red jpeg:- > test-media/Family/private-preview.jpg
+          cp test-media/Family/private-preview.jpg test-media/Family/Shared/preview.jpg
 
           docker run -d --name "$container" \
             -e PUID=1030 -e PGID=100 -e FILES_GALLERY_ADMIN_PASSWORD=change-me \
