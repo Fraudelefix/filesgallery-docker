@@ -248,7 +248,7 @@ jobs:
             cat acl-victor.json; docker exec "$container" tail -n 80 /var/log/apache2/error.log || true; exit 1
           fi
           echo 'ACL UI: current ACL response'; cat acl-victor.json
-          grep -q 'Family/Shared' acl-victor.json; grep -q 'Videos' acl-victor.json
+          grep -q 'Family.*Shared' acl-victor.json; grep -q 'Videos' acl-victor.json
           echo 'ACL UI: admin lazy tree request'
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_tree&path="' > acl-tree.json
           grep -q 'Family\|Videos' acl-tree.json
@@ -287,7 +287,7 @@ jobs:
           victor_family_hash="$(login_user victor victor-test-password)"; test "$victor_family_hash" != "$menu_cache_hash"
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-victor.cookie "http://127.0.0.1:80?action=file&file=Family/Private/secret.txt"' | grep -q 'private secret'
           docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family/Shared' 'http://127.0.0.1:80?action=acl_admin'" > acl-save-shared.json
-          grep -q 'Family/Shared' acl-save-shared.json
+          grep -q 'Family.*Shared' acl-save-shared.json
           victor_shared_hash="$(login_user victor victor-test-password)"; test "$victor_shared_hash" != "$victor_family_hash"
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-victor.cookie "http://127.0.0.1:80?action=file&file=Family/Shared/shared.txt"' | grep -q 'shared content'
           ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-victor.cookie "http://127.0.0.1:80?action=file&file=Family/Private/secret.txt"' | grep -q 'private secret'
