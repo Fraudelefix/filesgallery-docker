@@ -268,10 +268,15 @@ jobs:
             test "$(docker exec "$container" sha256sum /config/users/victor/acl.php | awk '{print \$1}')" = "$acl_before"
           }
           echo 'ACL UI TEST: CSRF and invalid requests preserve the ACL file'
+          echo 'ACL UI: normal-user POST request'
           test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-cookie --data-urlencode 'token=$victor_token' --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family' 'http://127.0.0.1:80?action=acl_admin'")" = 403
-          test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family' 'http://127.0.0.1:80?action=acl_admin'")" = 403
+          echo 'ACL UI: unauthenticated POST request'
+          test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family' 'http://127.0.0.1:80?action=acl_admin'")" = 401
+          echo 'ACL UI: missing CSRF request'
           reject_acl 403
+          echo 'ACL UI: invalid CSRF request'
           reject_acl 403 "--data-urlencode 'token=invalid'"
+          echo 'ACL UI: invalid user and paths'
           reject_acl 400 "--data-urlencode 'user=../admin'"
           reject_acl 400 "--data-urlencode 'allow[]=../etc'"
           reject_acl 400 "--data-urlencode 'allow[]=/Family'"
