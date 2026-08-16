@@ -86,7 +86,7 @@ install_patched_runtime_index() {
     echo "Patched Files Gallery index.php is invalid PHP" >&2
     exit 67
   fi
-  for marker in FILESGALLERY_ACL_INIT_V1 FILESGALLERY_ACL_FILTER_V1 FILESGALLERY_ACL_MENU_V1 FILESGALLERY_ACL_PREVIEW_V1; do
+  for marker in FILESGALLERY_ACL_INIT_V1 FILESGALLERY_ACL_ADMIN_V1 FILESGALLERY_ACL_FILTER_V1 FILESGALLERY_ACL_MENU_V1 FILESGALLERY_ACL_PREVIEW_V1; do
     [ "$(grep -c "$marker" "$temporary")" = 1 ] || { rm -f "$temporary"; echo "Patched Files Gallery marker verification failed" >&2; exit 67; }
   done
   grep -F "Files Gallery $FILES_GALLERY_VERSION" "$temporary" >/dev/null || { rm -f "$temporary"; echo "Patched Files Gallery version verification failed" >&2; exit 67; }
