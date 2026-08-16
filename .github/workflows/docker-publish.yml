@@ -244,7 +244,9 @@ jobs:
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin"' > acl-admin.html
           grep -q 'ACL Administration\|traversal-only' acl-admin.html
           echo 'ACL UI: admin current ACL request'
-          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_data&user=victor"' > acl-victor.json
+          if ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail-with-body --silent --show-error -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_data&user=victor"' > acl-victor.json; then
+            cat acl-victor.json; docker exec "$container" tail -n 80 /var/log/apache2/error.log || true; exit 1
+          fi
           grep -q 'Family/Shared' acl-victor.json; grep -q 'Videos' acl-victor.json
           echo 'ACL UI: admin lazy tree request'
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_tree&path="' > acl-tree.json
