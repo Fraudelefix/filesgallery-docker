@@ -236,16 +236,23 @@ jobs:
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=file&file=Family/Private/secret.txt"' | grep -q 'private secret'
           ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=file&file=../etc/passwd"' | grep -q 'root:'
           echo 'ACL UI TEST: authorization, current ACL and lazy tree'
-          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" "http://127.0.0.1:80?action=acl_admin"')" = 403
+          echo 'ACL UI: unauthenticated page request'
+          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" "http://127.0.0.1:80?action=acl_admin"')" = 401
+          echo 'ACL UI: normal-user page request'
           test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-cookie "http://127.0.0.1:80?action=acl_admin"')" = 403
+          echo 'ACL UI: admin page request'
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin"' > acl-admin.html
           grep -q 'ACL Administration\|traversal-only' acl-admin.html
+          echo 'ACL UI: admin current ACL request'
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_data&user=victor"' > acl-victor.json
           grep -q 'Family/Shared' acl-victor.json; grep -q 'Videos' acl-victor.json
+          echo 'ACL UI: admin lazy tree request'
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_tree&path="' > acl-tree.json
           grep -q 'Family\|Videos' acl-tree.json
+          echo 'ACL UI: malformed and missing ACL state'
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_data&user=bad-acl"' | grep -q '"state":"malformed"'
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_data&user=missing-acl"' | grep -q '"state":"missing"'
+          echo 'ACL UI: normal-user tree request'
           test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-cookie "http://127.0.0.1:80?action=acl_admin_tree&path="')" = 403
           admin_token="$(sed -n 's/.*"session_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' login-admin.html | head -n1)"
           victor_token="$(sed -n 's/.*"session_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' login-response.html | head -n1)"
