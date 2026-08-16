@@ -265,7 +265,7 @@ jobs:
             expected="$1"; shift
             code="$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=victor' $* 'http://127.0.0.1:80?action=acl_admin'")"
             test "$code" = "$expected"
-            test "$(docker exec "$container" sha256sum /config/users/victor/acl.php | awk '{print \$1}')" = "$acl_before"
+            test "$(docker exec "$container" sha256sum /config/users/victor/acl.php | awk '{print $1}')" = "$acl_before"
           }
           echo 'ACL UI TEST: CSRF and invalid requests preserve the ACL file'
           echo 'ACL UI: normal-user POST request'
