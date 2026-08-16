@@ -274,7 +274,8 @@ jobs:
           docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family' 'http://127.0.0.1:80?action=acl_admin'" | grep -q '"error":"login"'
           test "$(docker exec "$container" sha256sum /config/users/victor/acl.php | awk '{print $1}')" = "$acl_before"
           echo 'ACL UI: missing CSRF request'
-          reject_acl 403
+          test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-admin.cookie --data-urlencode 'user=victor' 'http://127.0.0.1:80?action=acl_admin'")" = 403
+          test "$(docker exec "$container" sha256sum /config/users/victor/acl.php | awk '{print $1}')" = "$acl_before"
           echo 'ACL UI: invalid CSRF request'
           reject_acl 403 "--data-urlencode 'token=invalid'"
           echo 'ACL UI: invalid user and paths'
