@@ -144,6 +144,7 @@ final class FilesGalleryAclIntegration
         try { $acl = acl_prepare(['allow' => $allow]); } catch (Throwable) { self::adminError('Invalid ACL.', 400); }
         $target = Config::$storagepath . "/users/$user/acl.php"; $tmp = tempnam(dirname($target), '.acl.');
         if ($tmp === false || file_put_contents($tmp, self::formatAcl($acl['allow'])) === false || !@chmod($tmp, 0600) || !@rename($tmp, $target)) { @unlink((string)$tmp); self::adminError('ACL save failed.', 500); }
+        if (function_exists('opcache_invalidate')) @opcache_invalidate($target, true);
         header('content-type: application/json'); exit(json_encode(['ok' => true, 'allow' => $acl['allow']], JSON_UNESCAPED_UNICODE));
     }
 
