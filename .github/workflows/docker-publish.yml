@@ -235,6 +235,52 @@ jobs:
           admin_hash="$(login_user admin change-me)"; test -n "$admin_hash"
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=file&file=Family/Private/secret.txt"' | grep -q 'private secret'
           ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=file&file=../etc/passwd"' | grep -q 'root:'
+          echo 'ACL UI TEST: authorization, current ACL and lazy tree'
+          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" "http://127.0.0.1:80?action=acl_admin"')" = 403
+          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-cookie "http://127.0.0.1:80?action=acl_admin"')" = 403
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin"' > acl-admin.html
+          grep -q 'ACL Administration\|traversal-only' acl-admin.html
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_data&user=victor"' > acl-victor.json
+          grep -q 'Family/Shared' acl-victor.json; grep -q 'Videos' acl-victor.json
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_tree&path="' > acl-tree.json
+          grep -q 'Family\|Videos' acl-tree.json
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_data&user=bad-acl"' | grep -q '"state":"malformed"'
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_data&user=missing-acl"' | grep -q '"state":"missing"'
+          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-cookie "http://127.0.0.1:80?action=acl_admin_tree&path="')" = 403
+          admin_token="$(sed -n 's/.*"session_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' login-admin.html | head -n1)"
+          victor_token="$(sed -n 's/.*"session_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' login-response.html | head -n1)"
+          test -n "$admin_token"; test -n "$victor_token"
+          acl_before="$(docker exec "$container" sha256sum /config/users/victor/acl.php | awk '{print $1}')"
+          reject_acl() {
+            expected="$1"; shift
+            code="$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=victor' $* 'http://127.0.0.1:80?action=acl_admin'")"
+            test "$code" = "$expected"
+            test "$(docker exec "$container" sha256sum /config/users/victor/acl.php | awk '{print \$1}')" = "$acl_before"
+          }
+          echo 'ACL UI TEST: CSRF and invalid requests preserve the ACL file'
+          test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-cookie --data-urlencode 'token=$victor_token' --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family' 'http://127.0.0.1:80?action=acl_admin'")" = 403
+          test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family' 'http://127.0.0.1:80?action=acl_admin'")" = 403
+          reject_acl 403
+          reject_acl 403 "--data-urlencode 'token=invalid'"
+          reject_acl 400 "--data-urlencode 'user=../admin'"
+          reject_acl 400 "--data-urlencode 'allow[]=../etc'"
+          reject_acl 400 "--data-urlencode 'allow[]=/Family'"
+          reject_acl 400 "--data-urlencode 'allow[]=Family\\Private'"
+          reject_acl 400 "--data-urlencode 'allow[]=DoesNotExist'"
+          reject_acl 400 "--data-urlencode 'allow[]=Family/Shared/link'"
+          echo 'ACL UI TEST: atomic save and immediate enforcement'
+          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family' 'http://127.0.0.1:80?action=acl_admin'" > acl-save-family.json
+          grep -q '"Family"' acl-save-family.json
+          acl_after_family="$(docker exec "$container" sha256sum /config/users/victor/acl.php | awk '{print $1}')"; test "$acl_after_family" != "$acl_before"
+          docker exec "$container" php -l /config/users/victor/acl.php
+          docker exec "$container" sh -c "grep -F \"'allow' => [\" /config/users/victor/acl.php; grep -F \"'Family',\" /config/users/victor/acl.php; test \"\$(stat -c %a /config/users/victor/acl.php)\" = 600"
+          victor_family_hash="$(login_user victor victor-test-password)"; test "$victor_family_hash" != "$menu_cache_hash"
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-victor.cookie "http://127.0.0.1:80?action=file&file=Family/Private/secret.txt"' | grep -q 'private secret'
+          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family/Shared' 'http://127.0.0.1:80?action=acl_admin'" > acl-save-shared.json
+          grep -q 'Family/Shared' acl-save-shared.json
+          victor_shared_hash="$(login_user victor victor-test-password)"; test "$victor_shared_hash" != "$victor_family_hash"
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-victor.cookie "http://127.0.0.1:80?action=file&file=Family/Shared/shared.txt"' | grep -q 'shared content'
+          ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-victor.cookie "http://127.0.0.1:80?action=file&file=Family/Private/secret.txt"' | grep -q 'private secret'
           if docker run --rm --entrypoint php "$image" /usr/local/share/filesgallery/acl/patch.php /usr/local/share/filesgallery/acl/acl.php /tmp/out; then
             echo "ACL patch unexpectedly accepted an invalid upstream source" >&2
             exit 1

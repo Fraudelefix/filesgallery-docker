@@ -21,8 +21,7 @@ The Docker image does not contain the Files Gallery application. At container st
 - Fixed admin account; its password is supplied through FILES_GALLERY_ADMIN_PASSWORD.
 - PHP extension and ImageMagick JPEG/TIFF smoke checks during image builds.
 - Common NAS and system files hidden from Files Gallery by default.
-
-TBC : ACL manager (permitted without licencing)
+- Admin-only, allow-only folder ACL editor for existing Files Gallery users.
 
 ## How this image works
 
@@ -73,6 +72,24 @@ The admin username is always admin. FILES_GALLERY_ADMIN_PASSWORD is the password
 Files Gallery diagnostics/tests are disabled globally and enabled by default for the built-in admin account only.
 
 New users created from Settings/User Manager inherit the default NAS/system exclusion regexes. Those users can edit their own regexes afterwards, for example to add a private-folder exclusion.
+
+### Per-user folder ACLs
+
+After signing in as the built-in `admin` user, open `http://<host>/?action=acl_admin`. The page lists existing valid users (not `admin` itself), lazy-loads the actual `/media` directory tree, and edits only their read-visibility ACLs. It is independent of the Files Gallery premium user manager.
+
+A checked folder grants recursive read. Its unselected ancestors display as traversal-only; those ancestors are computed for navigation and are never written to disk. ACLs are allow-only: selecting `Family` makes every child readable, so to hide `Family/Private`, remove `Family` and select only the wanted branch such as `Family/Shared`. This does not grant upload, deletion, rename, move, or any other media write capability.
+
+The page uses the existing session CSRF token and writes atomically. The canonical allow-list is stored as UTF-8 PHP in `/config/users/<username>/acl.php`; missing, empty, or malformed ACLs grant no normal-user access. For recovery/debugging, the supported file format is:
+
+~~~php
+<?php
+return [
+    'allow' => [
+        'Family/Shared',
+        'Videos',
+    ],
+];
+~~~
 
 ## Default exclusions
 
