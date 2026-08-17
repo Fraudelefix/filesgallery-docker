@@ -105,7 +105,7 @@ function acl_load(string $username, string $usersRoot): array
     $userDir = acl_user_dir($username, $usersRoot);
     if ($userDir === null) return ['allow' => []];
 
-    $file = $resolvedDir . DIRECTORY_SEPARATOR . 'acl.php';
+    $file = $userDir . DIRECTORY_SEPARATOR . 'acl.php';
     $resolvedFile = realpath($file);
     if ($resolvedFile === false || !is_file($resolvedFile) || is_link($file) || $resolvedFile !== $file) return ['allow' => []];
 
