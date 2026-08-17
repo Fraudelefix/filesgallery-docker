@@ -88,7 +88,7 @@ final class FilesGalleryAclIntegration
         $root = Config::$storagepath . '/users'; $users = [];
         foreach (@scandir($root) ?: [] as $name) {
             if ($name === 'admin') continue;
-            try { if (is_dir($root . '/' . acl_validate_username($name))) $users[] = $name; } catch (Throwable) {}
+            try { if (acl_user_dir($name, $root) !== null) $users[] = $name; } catch (Throwable) {}
         }
         natcasesort($users); return array_values($users);
     }
@@ -114,20 +114,8 @@ final class FilesGalleryAclIntegration
     {
         try { $user = acl_validate_username($user); } catch (Throwable) { self::adminError('Invalid user.', 400); }
         if ($user === 'admin' || !in_array($user, self::adminUsers(), true)) self::adminError('User not found.', 404);
-        $file = Config::$storagepath . "/users/$user/acl.php";
-        if (!is_file($file) || is_link($file)) {
-            header('content-type: application/json'); exit(json_encode(['allow' => [], 'state' => 'missing']));
-        }
-        try {
-            set_error_handler(static fn() => throw new RuntimeException('Invalid ACL file.'));
-            try { $value = include $file; } finally { restore_error_handler(); }
-            if (!is_array($value)) throw new RuntimeException('Invalid ACL file.');
-            $acl = acl_prepare($value);
-            $state = 'valid';
-        } catch (Throwable) {
-            $acl = ['allow' => []]; $state = 'malformed';
-        }
-        header('content-type: application/json'); exit(json_encode(['allow' => $acl['allow'], 'state' => $state], JSON_UNESCAPED_UNICODE));
+        $state = acl_editor_state($user, Config::$storagepath . '/users');
+        header('content-type: application/json'); exit(json_encode($state, JSON_UNESCAPED_UNICODE));
     }
 
     private static function saveAdmin(): never
@@ -142,18 +130,12 @@ final class FilesGalleryAclIntegration
             if ($real === false || self::relative($real) !== $path || !is_dir($real) || is_link($full)) self::adminError('Folder not found.', 400);
         }
         try { $acl = acl_prepare(['allow' => $allow]); } catch (Throwable) { self::adminError('Invalid ACL.', 400); }
-        $target = Config::$storagepath . "/users/$user/acl.php"; $tmp = tempnam(dirname($target), '.acl.');
-        if ($tmp === false || file_put_contents($tmp, self::formatAcl($acl['allow'])) === false || !@chmod($tmp, 0600) || !@rename($tmp, $target)) { @unlink((string)$tmp); self::adminError('ACL save failed.', 500); }
+        try { $userDir = acl_user_dir($user, Config::$storagepath . '/users'); } catch (Throwable) { $userDir = null; }
+        if ($userDir === null) self::adminError('User not found.', 404);
+        $target = $userDir . '/acl.php'; $tmp = tempnam($userDir, '.acl.');
+        if ($tmp === false || file_put_contents($tmp, acl_format_file($acl['allow'])) === false || !@chmod($tmp, 0600) || !@rename($tmp, $target)) { @unlink((string)$tmp); self::adminError('ACL save failed.', 500); }
         if (function_exists('opcache_invalidate')) @opcache_invalidate($target, true);
         header('content-type: application/json'); exit(json_encode(['ok' => true, 'allow' => $acl['allow']], JSON_UNESCAPED_UNICODE));
-    }
-
-    /** @param list<string> $allow */
-    private static function formatAcl(array $allow): string
-    {
-        $body = "<?php\nreturn [\n    'allow' => [\n";
-        foreach ($allow as $path) $body .= '        ' . var_export($path, true) . ",\n";
-        return $body . "    ],\n];\n";
     }
 
     private static function adminPage(): never
@@ -161,7 +143,7 @@ final class FilesGalleryAclIntegration
         $users = self::adminUsers(); $token = json_encode((string)($_SESSION['token'] ?? ''), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); $opts = '';
         foreach ($users as $u) $opts .= '<option>' . htmlspecialchars($u, ENT_QUOTES) . '</option>';
         header('content-type: text/html; charset=UTF-8');
-        exit("<!doctype html><meta charset=utf-8><title>ACL Administration</title><style>body{font:16px sans-serif;max-width:760px;margin:2rem auto}li{margin:.25rem}.state{margin:1rem 0}.hint{color:#555}button{margin:.5rem}.warn{color:#8a3b00}</style><h1>ACL Administration</h1><p>Read visibility only. A checked folder grants recursive read. A ◐ folder is traversal-only, computed from a selected descendant and never stored.</p><p class=hint>ACLs are allow-only: to exclude a child, remove its selected parent and select only the desired branches.</p><label>User <select id=u>$opts</select></label><button id=save>Save permissions</button><p id=status class=state></p><ul id=tree></ul><script>const t=$token,q=document.querySelector.bind(document);let sel=new Set;const esc=s=>s;function ancestor(p){for(const x of sel)if(p!==x&&p.startsWith(x+'/'))return x}function descendant(p){for(const x of sel)if(x.startsWith(p+'/'))return true}function sync(c,p,label){let parent=ancestor(p),exact=sel.has(p);c.checked=exact||!!parent;c.indeterminate=!exact&&!parent&&descendant(p);c.disabled=!!parent;label.textContent=(c.indeterminate?'◐ ':c.checked?'☑ ':'☐ ')+(parent?'inherited: ':'')+p.split('/').pop()}function drawItem(x,el){let l=document.createElement('li'),c=document.createElement('input'),label=document.createElement('span');c.type='checkbox';sync(c,x.path,label);c.onchange=()=>{if(c.checked){for(const v of [...sel])if(v.startsWith(x.path+'/'))sel.delete(v);sel.add(x.path)}else sel.delete(x.path);refresh()};l.append(c,label);let a=document.createElement('button');a.textContent='expand';a.onclick=()=>{let z=document.createElement('ul');l.append(z);load(x.path,z);a.remove()};l.append(a);el.append(l)}function refresh(){for(const x of document.querySelectorAll('#tree input'))sync(x,x.dataset.path,x.nextSibling)}async function load(p='',el=q('#tree')){let r=await fetch('?action=acl_admin_tree&path='+encodeURIComponent(p));if(!r.ok)throw Error(await r.text());let j=await r.json();for(const x of j.items){let before=el.children.length;drawItem(x,el);el.children[before].querySelector('input').dataset.path=x.path}}async function user(){sel=new Set;q('#tree').replaceChildren();let r=await fetch('?action=acl_admin_data&user='+encodeURIComponent(q('#u').value));if(!r.ok){q('#status').textContent=await r.text();return}let j=await r.json();sel=new Set(j.allow);q('#status').textContent=j.state==='malformed'?'Warning: the existing ACL is malformed. It grants no access until you explicitly save a replacement.':j.state==='missing'?'No ACL file: this user currently has no read access.':'Loaded canonical ACL.';q('#status').className=j.state==='malformed'?'state warn':'state';await load()}q('#u').onchange=user;q('#save').onclick=async()=>{let f=new FormData();f.append('token',t);f.append('user',q('#u').value);for(const x of sel)f.append('allow[]',x);let r=await fetch('?action=acl_admin',{method:'POST',body:f});let j;try{j=await r.json()}catch{q('#status').textContent=await r.text();return}if(!r.ok){q('#status').textContent='Save failed';return}sel=new Set(j.allow);q('#status').textContent='Saved. ACL reloaded from disk.';await user()};if(q('#u').value)user();else q('#status').textContent='No editable users.';</script>");
+        exit("<!doctype html><meta charset=utf-8><title>ACL Administration</title><style>body{font:16px sans-serif;max-width:760px;margin:2rem auto}li{margin:.25rem}.state{margin:1rem 0}.hint{color:#555}button{margin:.5rem}.warn{color:#8a3b00}</style><h1>ACL Administration</h1><p>Read visibility only. A checked folder grants recursive read. A ◐ folder is traversal-only, computed from a selected descendant and never stored.</p><p class=hint>ACLs are allow-only: to exclude a child, remove its selected parent and select only the desired branches.</p><label>User <select id=u>$opts</select></label><button id=save>Save permissions</button><p id=status class=state></p><ul id=tree></ul><script>const t=$token,q=document.querySelector.bind(document);let sel=new Set;function ancestor(p){for(const x of sel)if(p!==x&&p.startsWith(x+'/'))return x}function descendant(p){for(const x of sel)if(x.startsWith(p+'/'))return true}function sync(c,p,label){let parent=ancestor(p),exact=sel.has(p);c.checked=exact||!!parent;c.indeterminate=!exact&&!parent&&descendant(p);c.disabled=!!parent;label.textContent=(c.indeterminate?'◐ ':c.checked?'☑ ':'☐ ')+(parent?'inherited: ':'')+p.split('/').pop()}function drawItem(x,el){let l=document.createElement('li'),c=document.createElement('input'),label=document.createElement('span');c.type='checkbox';sync(c,x.path,label);c.onchange=()=>{if(c.checked){for(const v of [...sel])if(v.startsWith(x.path+'/'))sel.delete(v);sel.add(x.path)}else sel.delete(x.path);refresh()};l.append(c,label);let a=document.createElement('button');a.textContent='expand';a.onclick=()=>{let z=document.createElement('ul');l.append(z);load(x.path,z);a.remove()};l.append(a);el.append(l)}function refresh(){for(const x of document.querySelectorAll('#tree input'))sync(x,x.dataset.path,x.nextSibling)}async function load(p='',el=q('#tree')){let r=await fetch('?action=acl_admin_tree&path='+encodeURIComponent(p)),text=await r.text();if(!r.ok)throw Error(text||'Tree load failed.');let j=JSON.parse(text);for(const x of j.items){let before=el.children.length;drawItem(x,el);el.children[before].querySelector('input').dataset.path=x.path}}async function user(){sel=new Set;q('#tree').replaceChildren();let r=await fetch('?action=acl_admin_data&user='+encodeURIComponent(q('#u').value)),text=await r.text();if(!r.ok){q('#status').textContent=text||'Unable to load ACL.';return}let j=JSON.parse(text);sel=new Set(j.allow);q('#status').textContent=j.state==='malformed'?'Warning: the existing ACL is malformed. It grants no access until you explicitly save a replacement.':j.state==='missing'?'No ACL file: this user currently has no read access.':'Loaded canonical ACL.';q('#status').className=j.state==='malformed'?'state warn':'state';await load()}q('#u').onchange=user;q('#save').onclick=async()=>{let f=new FormData();f.append('token',t);f.append('user',q('#u').value);for(const x of sel)f.append('allow[]',x);let r=await fetch('?action=acl_admin',{method:'POST',body:f}),text=await r.text(),j;try{j=JSON.parse(text)}catch{q('#status').textContent=text||'Save failed.';return}if(!r.ok||!j.ok){q('#status').textContent=j.error||'Save failed.';return}sel=new Set(j.allow);q('#status').textContent='Saved. ACL reloaded from disk.';await user()};if(q('#u').value)user();else q('#status').textContent='No editable users.';</script>");
     }
 
     private static function adminError(string $message, int $code): never { http_response_code($code); exit(htmlspecialchars($message, ENT_QUOTES)); }

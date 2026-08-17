@@ -25,4 +25,14 @@ reset2('victor', ['Family']); ok2($hash !== Config::$config['cache_key'], 'ACL c
 reset2('other', ['Family/Shared', 'Videos']); ok2($hash !== Config::$config['cache_key'], 'user changes namespace');
 reset2('victor', ['Family/Shared', 'Videos']); Path::$paths['/media/Family/Shared/link/a.jpg'] = '/media/Family/Private/a.jpg'; ok2(FilesGalleryAclIntegration::excluded('/media/Family/Shared/link/a.jpg', false), 'canonical mismatch denied');
 Path::$paths['/media/Family/Shared/out.jpg'] = '/outside/out.jpg'; ok2(FilesGalleryAclIntegration::excluded('/media/Family/Shared/out.jpg', false), 'canonical outside denied');
+reset2('admin', []);
+mkdir(Config::$storagepath . '/users/Editor', 0700);
+mkdir(Config::$storagepath . '/users/.invalid', 0700);
+if (function_exists('symlink')) {
+    $outside = sys_get_temp_dir() . '/acl-user-link-' . bin2hex(random_bytes(4)); mkdir($outside, 0700);
+    symlink($outside, Config::$storagepath . '/users/Evil');
+}
+$users = (new ReflectionMethod(FilesGalleryAclIntegration::class, 'adminUsers'))->invoke(null);
+ok2(in_array('Editor', $users, true), 'real user directory discovered');
+ok2(!in_array('admin', $users, true) && !in_array('.invalid', $users, true) && !in_array('Evil', $users, true), 'admin, invalid and symlink users hidden');
 echo "OK adapter\n";

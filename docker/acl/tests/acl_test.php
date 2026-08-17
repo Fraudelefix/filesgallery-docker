@@ -47,4 +47,16 @@ acl_file($root, 'Mixed', "<?php return ['allow' => ['Good', '../bad']];"); check
 check(acl_load('Missing', $root) === ['allow' => []], 'missing acl file denied');
 foreach (['', '../x', 'a/b', 'a\\b', "bad\0name"] as $name) invalid(fn() => acl_load($name, $root), "unsafe username $name");
 
+mkdir("$root/Editor", 0700); check(acl_user_dir('Editor', $root) === realpath("$root/Editor"), 'real direct user directory accepted');
+foreach (['', '../Editor', 'a/b', 'a\\b'] as $name) invalid(fn() => acl_user_dir($name, $root), "invalid editor username $name");
+if (function_exists('symlink')) {
+    $outside = sys_get_temp_dir() . '/fg-acl-outside-' . bin2hex(random_bytes(4)); mkdir($outside, 0700);
+    symlink($outside, "$root/Evil");
+    check(acl_user_dir('Evil', $root) === null, 'symlink user directory rejected');
+}
+check(acl_editor_state('Victor', $root) === ['allow' => ['Family/Shared'], 'state' => 'valid'], 'editor loads valid ACL');
+check(acl_editor_state('Missing', $root) === ['allow' => [], 'state' => 'missing'], 'editor missing ACL fails closed');
+check(acl_editor_state('BadAllow', $root) === ['allow' => [], 'state' => 'malformed'], 'editor malformed ACL fails closed');
+check(acl_format_file(['Family/Shared', 'Videos']) === "<?php\nreturn [\n    'allow' => [\n        'Family/Shared',\n        'Videos',\n    ],\n];\n", 'deterministic ACL format');
+
 echo "OK ($count assertions)\n";

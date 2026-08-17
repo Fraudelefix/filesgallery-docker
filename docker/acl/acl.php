@@ -79,6 +79,22 @@ function acl_normalize_allow(array $allow): array
 }
 
 /**
+ * Resolves only a real, direct child directory of the configured users root.
+ * Invalid usernames throw; absent or symlinked candidates are not users.
+ */
+function acl_user_dir(string $username, string $usersRoot): ?string
+{
+    $username = acl_validate_username($username);
+    $root = realpath($usersRoot);
+    if ($root === false || !is_dir($root)) throw new InvalidArgumentException('Invalid ACL users root.');
+
+    $path = $root . DIRECTORY_SEPARATOR . $username;
+    $resolved = realpath($path);
+    if (is_link($path) || $resolved === false || !is_dir($resolved) || $resolved !== $path) return null;
+    return $path;
+}
+
+/**
  * Loads only <usersRoot>/<validated username>/acl.php.
  * Missing or invalid ACL data denies all for non-admin users.
  *
@@ -86,15 +102,8 @@ function acl_normalize_allow(array $allow): array
  */
 function acl_load(string $username, string $usersRoot): array
 {
-    acl_validate_username($username);
-    $root = realpath($usersRoot);
-    if ($root === false || !is_dir($root)) throw new InvalidArgumentException('Invalid ACL users root.');
-
-    $userDir = $root . DIRECTORY_SEPARATOR . $username;
-    $resolvedDir = realpath($userDir);
-    if ($resolvedDir === false || !is_dir($resolvedDir) || !str_starts_with($resolvedDir, $root . DIRECTORY_SEPARATOR)) {
-        return ['allow' => []];
-    }
+    $userDir = acl_user_dir($username, $usersRoot);
+    if ($userDir === null) return ['allow' => []];
 
     $file = $resolvedDir . DIRECTORY_SEPARATOR . 'acl.php';
     $resolvedFile = realpath($file);
@@ -109,6 +118,32 @@ function acl_load(string $username, string $usersRoot): array
     } catch (Throwable) {
         return ['allow' => []];
     }
+}
+
+/** @return array{allow:list<string>,state:'valid'|'missing'|'malformed'} */
+function acl_editor_state(string $username, string $usersRoot): array
+{
+    $userDir = acl_user_dir($username, $usersRoot);
+    if ($userDir === null) return ['allow' => [], 'state' => 'missing'];
+    $file = $userDir . DIRECTORY_SEPARATOR . 'acl.php';
+    if (!is_file($file) || is_link($file) || realpath($file) !== $file) return ['allow' => [], 'state' => 'missing'];
+
+    try {
+        set_error_handler(static fn() => throw new RuntimeException('Invalid ACL file.'));
+        try { $value = include $file; } finally { restore_error_handler(); }
+        if (!is_array($value)) throw new RuntimeException('Invalid ACL file.');
+        return ['allow' => acl_prepare($value)['allow'], 'state' => 'valid'];
+    } catch (Throwable) {
+        return ['allow' => [], 'state' => 'malformed'];
+    }
+}
+
+/** @param list<string> $allow */
+function acl_format_file(array $allow): string
+{
+    $body = "<?php\nreturn [\n    'allow' => [\n";
+    foreach ($allow as $path) $body .= '        ' . var_export($path, true) . ",\n";
+    return $body . "    ],\n];\n";
 }
 
 function acl_is_admin(string $username): bool

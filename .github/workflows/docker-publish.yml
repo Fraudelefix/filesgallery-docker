@@ -93,7 +93,7 @@ jobs:
           image=filesgallery-test:manual
           container=filesgallery-test
           mkdir test-media test-config
-          mkdir -p test-media/Family/Private test-media/Family/Shared/2026 test-media/Videos test-media/Other test-config/users/{victor,broad,narrow,missing-acl,empty-acl,bad-acl}
+          mkdir -p test-media/Family/Private test-media/Family/Shared/2026 test-media/Videos test-media/Other test-config/users/{victor,broad,narrow,missing-acl,empty-acl,bad-acl} test-config/evil-target
           printf 'parent secret\n' > test-media/Family/parent.txt
           printf 'private secret\n' > test-media/Family/Private/secret.txt
           printf 'shared content\n' > test-media/Family/Shared/shared.txt
@@ -114,6 +114,9 @@ jobs:
           printf "<?php return ['allow' => ['Family/Shared']];" > test-config/users/narrow/acl.php
           printf "<?php return ['allow' => []];" > test-config/users/empty-acl/acl.php
           printf "<?php return ['allow' => 'invalid'];" > test-config/users/bad-acl/acl.php
+          printf "<?php return ['allow' => ['Other']];" > test-config/evil-target/acl.php
+          printf "<?php return ['password' => 'not-a-real-user'];" > test-config/evil-target/config.php
+          ln -s ../evil-target test-config/users/evil
           trap 'docker rm -f "$container" 2>/dev/null || true' EXIT
           wait_for_app() {
             for _ in {1..20}; do
@@ -243,6 +246,7 @@ jobs:
           echo 'ACL UI: admin page request'
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin"' > acl-admin.html
           grep -q 'ACL Administration\|traversal-only' acl-admin.html
+          ! grep -q '<option>evil</option>' acl-admin.html
           echo 'ACL UI: admin current ACL request'
           if ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail-with-body --silent --show-error -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_data&user=victor"' > acl-victor.json; then
             cat acl-victor.json; docker exec "$container" tail -n 80 /var/log/apache2/error.log || true; exit 1
@@ -260,6 +264,11 @@ jobs:
           admin_token="$(sed -n 's/.*"session_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' login-admin.html | head -n1)"
           victor_token="$(sed -n 's/.*"session_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' login-response.html | head -n1)"
           test -n "$admin_token"; test -n "$victor_token"
+          evil_before="$(sha256sum test-config/evil-target/acl.php | awk '{print $1}')"
+          echo 'ACL UI: symlink user data and save requests'
+          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_data&user=evil"')" = 404
+          test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=evil' --data-urlencode 'allow[]=Family' 'http://127.0.0.1:80?action=acl_admin'")" = 404
+          test "$(sha256sum test-config/evil-target/acl.php | awk '{print $1}')" = "$evil_before"
           acl_before="$(docker exec "$container" sha256sum /config/users/victor/acl.php | awk '{print $1}')"
           reject_acl() {
             expected="$1"; shift

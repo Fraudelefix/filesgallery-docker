@@ -1,8 +1,8 @@
 # Files Gallery Docker
 
-This repository is an independent Docker packaging project that makes [Files Gallery](https://www.files.gallery/) easy to deploy. Files Gallery itself is developed by mjau-mjau and is not maintained here. No modifications are made to the original Files Gallery source code.
+This repository is an independent Docker packaging project that makes [Files Gallery](https://www.files.gallery/) easy to deploy. Files Gallery itself is developed by mjau-mjau and is not maintained here. This repository does not redistribute a modified upstream `index.php`.
 
-The Docker image does not contain the Files Gallery application. At container startup it downloads the original, unmodified index.php directly from a pinned upstream Git commit, verifies its version and SHA-256, then starts Apache.
+The Docker image does not contain the Files Gallery application. At container startup it downloads the pristine `index.php` directly from a pinned upstream Git commit and verifies its version and SHA-256. It retains that pristine copy separately, then deterministically generates the runtime `index.php` with the independent ACL integration before starting Apache.
 
 ## Upstream Files Gallery
 
@@ -26,8 +26,8 @@ The Docker image does not contain the Files Gallery application. At container st
 ## How this image works
 
 1. The image contains Apache, PHP, and the required runtime dependencies.
-2. The image does not include the Files Gallery application. At startup, the entrypoint reads its pinned version metadata and downloads the official Files Gallery 0.15.3 index.php over HTTPS.
-3. The file is checked against its SHA-256 and its declared Files Gallery version before an atomic install to /var/www/html/index.php; the installed file is checked again afterwards.
+2. The image does not include the Files Gallery application. At startup, the entrypoint reads its pinned version metadata and downloads the pristine official Files Gallery 0.15.3 index.php over HTTPS.
+3. The pristine file is checked against its SHA-256 and its declared Files Gallery version, retained separately for verification, then deterministically patched with the independent ACL integration into the runtime /var/www/html/index.php.
 4. A normal restart reuses the already verified file. A recreated container downloads and verifies it again.
 5. /media is the read-only media source; /config stores Files Gallery configuration and cache.
 
@@ -104,4 +104,4 @@ This is only Files Gallery display/access filtering. Nothing in /media is delete
 
 Git tags use YYYY.MM.DD or YYYY.MM.DD-N and publish matching GHCR image tags. latest is also updated for a successful tagged publication, but production deployments should use a dated tag. To roll back, switch the image tag in Compose and recreate the container; keep /config intact.
 
-The pinned upstream dependency is defined in [app/VERSION](app/VERSION). It records the Files Gallery version, upstream commit, raw GitHub URL, and SHA-256. The upstream index.php is intentionally not stored in this repository or baked into the image.
+The pinned upstream dependency is defined in [app/VERSION](app/VERSION). It records the Files Gallery version, upstream commit, raw GitHub URL, and SHA-256. The pristine upstream index.php is intentionally not stored in this repository or baked into the image; the runtime copy is generated only after verification.
