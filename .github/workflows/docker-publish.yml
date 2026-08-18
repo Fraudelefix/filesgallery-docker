@@ -330,8 +330,7 @@ jobs:
           phase4_before="$(docker exec "$container" sha256sum /config/users/phase4/config.php | awk '{print $1}')"
           test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=phase4' --data-urlencode 'content=<?php return not-an-array;' 'http://127.0.0.1:80?action=acl_admin_config_save'")" = 400
           test "$(docker exec "$container" sha256sum /config/users/phase4/config.php | awk '{print $1}')" = "$phase4_before"
-          phase4_content="$(docker exec "$container" cat /config/users/phase4/config.php)"
-          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=phase4' --data-urlencode 'content=$phase4_content' 'http://127.0.0.1:80?action=acl_admin_config_save'" | grep -q '"ok":true'
+          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=phase4' --data-urlencode 'content@/config/users/phase4/config.php' 'http://127.0.0.1:80?action=acl_admin_config_save'" | grep -q '"ok":true'
           docker exec "$container" sh -c 'php -l /config/users/phase4/config.php; test -f /config/users/phase4/config.php.previous; test "$(stat -c %a /config/users/phase4/config.php)" = 600'
           docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=phase4' --data-urlencode 'password=phase4-new-password' --data-urlencode 'password_confirm=phase4-new-password' 'http://127.0.0.1:80?action=acl_admin_user_password'" | grep -q '"ok":true'
           login_user phase4 phase4-new-password >/dev/null
