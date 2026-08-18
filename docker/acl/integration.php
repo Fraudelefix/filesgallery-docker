@@ -39,11 +39,6 @@ final class FilesGalleryAclIntegration
         $identity = self::$username === 'admin' ? 'admin' : self::$username;
         $payload = json_encode(self::$acl['allow'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         Config::$config['cache_key'] = 'acl-' . hash('sha256', (string) Config::get('cache_key') . "\n" . $identity . "\n" . $payload);
-        if (self::$username === 'admin') {
-            // Project-owned asset, loaded only for the canonical admin. This
-            // is cosmetic; all administration authorization remains server-side.
-            Config::$config['footer'] = (string) Config::get('footer') . '<script src="/docker-admin/admin.js" defer></script>';
-        }
     }
 
     public static function excluded(string $logicalPath, bool $isDir): bool

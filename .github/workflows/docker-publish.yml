@@ -140,7 +140,7 @@ jobs:
           docker exec "$container" apachectl -t
           docker exec "$container" sh -c "sha256sum /usr/local/share/filesgallery/upstream-index.php | grep -q '^$FILES_GALLERY_SHA256'"
           docker exec "$container" sh -c 'test ! -e /var/www/html/index.php || grep -q FILESGALLERY_ACL_INIT_V1 /var/www/html/index.php'
-          for marker in FILESGALLERY_ACL_INIT_V1 FILESGALLERY_ACL_ADMIN_V1 FILESGALLERY_ACL_FILTER_V1 FILESGALLERY_ACL_MENU_V1 FILESGALLERY_ACL_PREVIEW_V1; do
+          for marker in FILESGALLERY_ACL_INIT_V1 FILESGALLERY_ACL_ADMIN_V1 FILESGALLERY_ACL_FILTER_V1 FILESGALLERY_ACL_MENU_V1 FILESGALLERY_ACL_PREVIEW_V1 FILESGALLERY_ACL_ADMIN_ASSET_V1; do
             test "$(docker exec "$container" sh -c "grep -c $marker /var/www/html/index.php")" = 1
           done
           docker exec "$container" grep -F "Files Gallery $FILES_GALLERY_VERSION" /var/www/html/index.php
