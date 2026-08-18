@@ -341,10 +341,10 @@ jobs:
           test ! -e test-config/users/phase4copy
           echo 'USER ADMIN TEST: symlinked config is refused without touching sentinel'
           sentinel_before="$(sha256sum test-config/evil-target/config.php | awk '{print $1}')"
-          mv test-config/users/phase4/config.php test-config/users/phase4/config.php.real; ln -s ../../evil-target/config.php test-config/users/phase4/config.php
+          docker exec "$container" sh -c 'mv /config/users/phase4/config.php /config/users/phase4/config.php.real; ln -s ../../evil-target/config.php /config/users/phase4/config.php'
           test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_config&user=phase4"')" = 404
           test "$(sha256sum test-config/evil-target/config.php | awk '{print $1}')" = "$sentinel_before"
-          rm test-config/users/phase4/config.php; mv test-config/users/phase4/config.php.real test-config/users/phase4/config.php
+          docker exec "$container" sh -c 'rm /config/users/phase4/config.php; mv /config/users/phase4/config.php.real /config/users/phase4/config.php'
           if docker run --rm --entrypoint php "$image" /usr/local/share/filesgallery/acl/patch.php /usr/local/share/filesgallery/acl/acl.php /tmp/out; then
             echo "ACL patch unexpectedly accepted an invalid upstream source" >&2
             exit 1
