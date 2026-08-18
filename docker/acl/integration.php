@@ -73,10 +73,22 @@ final class FilesGalleryAclIntegration
     public static function handleAdmin(): bool
     {
         $action = U::get('action');
-        if (!in_array($action, ['acl_admin', 'acl_admin_tree', 'acl_admin_data'], true)) return false;
+        $actions = ['acl_admin', 'acl_admin_tree', 'acl_admin_data', 'acl_admin_users', 'acl_admin_user',
+            'acl_admin_user_create', 'acl_admin_user_password', 'acl_admin_user_delete', 'acl_admin_user_clone',
+            'acl_admin_config', 'acl_admin_config_validate', 'acl_admin_config_save'];
+        if (!in_array($action, $actions, true)) return false;
         if (self::$username !== 'admin') self::adminError('ACL administration requires the admin account.', 403);
         if ($action === 'acl_admin_tree') { self::treeJson((string) ($_GET['path'] ?? '')); return true; }
         if ($action === 'acl_admin_data') { self::aclJson((string) ($_GET['user'] ?? '')); return true; }
+        if ($action === 'acl_admin_user') { self::userJson((string) ($_GET['user'] ?? '')); return true; }
+        if ($action === 'acl_admin_config') { self::configJson((string) ($_GET['user'] ?? '')); return true; }
+        if ($action === 'acl_admin_config_validate') { self::validateConfig(); return true; }
+        if ($action === 'acl_admin_config_save') { self::saveConfig(); return true; }
+        if ($action === 'acl_admin_user_create') { self::createUser(); return true; }
+        if ($action === 'acl_admin_user_password') { self::changePassword(); return true; }
+        if ($action === 'acl_admin_user_delete') { self::deleteUser(); return true; }
+        if ($action === 'acl_admin_user_clone') { self::cloneUser(); return true; }
+        if ($action === 'acl_admin_users') { self::usersPage(); return true; }
         if ($_SERVER['REQUEST_METHOD'] === 'POST') self::saveAdmin();
         self::adminPage();
         return true;
@@ -85,12 +97,25 @@ final class FilesGalleryAclIntegration
     /** @return list<string> */
     private static function adminUsers(): array
     {
-        $root = Config::$storagepath . '/users'; $users = [];
-        foreach (@scandir($root) ?: [] as $name) {
-            if ($name === 'admin') continue;
-            try { if (acl_user_dir($name, $root) !== null) $users[] = $name; } catch (Throwable) {}
-        }
-        natcasesort($users); return array_values($users);
+        return fg_list_users(Config::$storagepath . '/users', false);
+    }
+
+    private static function csrf(): void
+    {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_SESSION['token']) || !is_string($_POST['token'] ?? null)
+            || !hash_equals($_SESSION['token'], $_POST['token'])) self::adminError('Invalid CSRF token.', 403);
+    }
+
+    private static function editableUser(string $user): string
+    {
+        try { $user = acl_validate_username($user); } catch (Throwable) { self::adminError('Invalid user.', 400); }
+        if (acl_user_dir($user, Config::$storagepath . '/users') === null) self::adminError('User not found.', 404);
+        return $user;
+    }
+
+    private static function json(array $value): never
+    {
+        header('content-type: application/json'); exit(json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     }
 
     private static function treeJson(string $path): never
@@ -118,6 +143,96 @@ final class FilesGalleryAclIntegration
         header('content-type: application/json'); exit(json_encode($state, JSON_UNESCAPED_UNICODE));
     }
 
+    private static function userJson(string $user): never
+    {
+        $user = self::editableUser($user); $root = Config::$storagepath . '/users';
+        $config = fg_user_config_state($user, $root); $acl = acl_editor_state($user, $root);
+        self::json(['username' => $user, 'config' => $config['state'], 'acl' => $user === 'admin' ? 'admin' : $acl['state']]);
+    }
+
+    private static function configJson(string $user): never
+    {
+        $user = self::editableUser($user);
+        $state = fg_user_config_state($user, Config::$storagepath . '/users');
+        if ($state['state'] !== 'valid') self::adminError('Config not available.', 404);
+        self::json(['username' => $user, 'content' => $state['content'], 'config' => $state['config']]);
+    }
+
+    private static function validateConfig(): never
+    {
+        self::csrf(); self::editableUser((string) ($_POST['user'] ?? ''));
+        try { $config = fg_validate_config_content((string) ($_POST['content'] ?? '')); }
+        catch (Throwable) { self::adminError('Invalid PHP configuration.', 400); }
+        self::json(['ok' => true, 'keys' => array_keys($config)]);
+    }
+
+    private static function saveConfig(): never
+    {
+        self::csrf(); $user = self::editableUser((string) ($_POST['user'] ?? ''));
+        $content = (string) ($_POST['content'] ?? '');
+        try { fg_atomic_save_config_content($user, Config::$storagepath . '/users', $content); }
+        catch (InvalidArgumentException) { self::adminError('Invalid PHP configuration.', 400); }
+        catch (Throwable) { self::adminError('Configuration save failed.', 500); }
+        self::json(['ok' => true]);
+    }
+
+    private static function createUser(): never
+    {
+        self::csrf();
+        $username = (string) ($_POST['username'] ?? ''); $password = (string) ($_POST['password'] ?? '');
+        if (!hash_equals($password, (string) ($_POST['password_confirm'] ?? ''))) self::adminError('Passwords do not match.', 400);
+        $source = (string) ($_POST['copy_from'] ?? ''); $copyConfig = null; $copyAcl = null; $root = Config::$storagepath . '/users';
+        try {
+            if ($source !== '') {
+                $source = self::editableUser($source); $sourceConfig = fg_user_config_state($source, $root);
+                if ($sourceConfig['state'] !== 'valid') self::adminError('Source config is invalid.', 400);
+                $copyConfig = $sourceConfig['config'];
+                if ((string) ($_POST['copy_acl'] ?? '') === '1' && $source !== 'admin') $copyAcl = acl_editor_state($source, $root)['allow'];
+            }
+            fg_create_user($username, $password, $root, $copyConfig, $copyAcl);
+        } catch (InvalidArgumentException) { self::adminError('Invalid user or password.', 400); }
+        catch (Throwable) { self::adminError('User creation failed.', 400); }
+        self::json(['ok' => true]);
+    }
+
+    private static function changePassword(): never
+    {
+        self::csrf(); $user = self::editableUser((string) ($_POST['user'] ?? ''));
+        $password = (string) ($_POST['password'] ?? '');
+        if (!hash_equals($password, (string) ($_POST['password_confirm'] ?? ''))) self::adminError('Passwords do not match.', 400);
+        try {
+            $state = fg_user_config_state($user, Config::$storagepath . '/users');
+            if ($state['state'] !== 'valid') self::adminError('Config not available.', 404);
+            $config = $state['config']; $config['password'] = fg_password_hash($password);
+            fg_atomic_save_config($user, Config::$storagepath . '/users', $config);
+        } catch (InvalidArgumentException) { self::adminError('Invalid password.', 400); }
+        catch (Throwable) { self::adminError('Password update failed.', 500); }
+        self::json(['ok' => true]);
+    }
+
+    private static function cloneUser(): never
+    {
+        self::csrf(); $source = self::editableUser((string) ($_POST['source'] ?? ''));
+        $username = (string) ($_POST['username'] ?? ''); $password = (string) ($_POST['password'] ?? '');
+        if (!hash_equals($password, (string) ($_POST['password_confirm'] ?? ''))) self::adminError('Passwords do not match.', 400);
+        $root = Config::$storagepath . '/users'; $state = fg_user_config_state($source, $root);
+        if ($state['state'] !== 'valid') self::adminError('Source config is invalid.', 400);
+        try {
+            $copyAcl = ((string) ($_POST['copy_acl'] ?? '') === '1' && $source !== 'admin') ? acl_editor_state($source, $root)['allow'] : null;
+            fg_create_user($username, $password, $root, $state['config'], $copyAcl);
+        } catch (Throwable) { self::adminError('User duplication failed.', 400); }
+        self::json(['ok' => true]);
+    }
+
+    private static function deleteUser(): never
+    {
+        self::csrf(); $user = (string) ($_POST['user'] ?? '');
+        try { fg_delete_user($user, Config::$storagepath . '/users'); }
+        catch (InvalidArgumentException) { self::adminError('The admin account cannot be deleted.', 400); }
+        catch (Throwable) { self::adminError('User deletion failed.', 404); }
+        self::json(['ok' => true]);
+    }
+
     private static function saveAdmin(): never
     {
         if (!isset($_SESSION['token']) || !is_string($_POST['token'] ?? null) || !hash_equals($_SESSION['token'], $_POST['token'])) self::adminError('Invalid CSRF token.', 403);
@@ -138,12 +253,49 @@ final class FilesGalleryAclIntegration
         header('content-type: application/json'); exit(json_encode(['ok' => true, 'allow' => $acl['allow']], JSON_UNESCAPED_UNICODE));
     }
 
+    private static function usersPage(): never
+    {
+        $root = Config::$storagepath . '/users'; $rows = ''; $options = '<option value="">none</option>';
+        foreach (fg_list_users($root) as $user) {
+            $config = fg_user_config_state($user, $root)['state'];
+            $acl = $user === 'admin' ? 'admin' : acl_editor_state($user, $root)['state'];
+            $safe = htmlspecialchars($user, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $rows .= "<tr><td>$safe</td><td>$config</td><td>$acl</td><td><button data-user=\"$safe\">Manage</button>" . ($user === 'admin' ? '' : " <a href=\"?action=acl_admin&amp;user=" . rawurlencode($user) . "\">ACL</a>") . '</td></tr>';
+            $options .= "<option value=\"$safe\">$safe</option>";
+        }
+        $token = htmlspecialchars((string) ($_SESSION['token'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        header('content-type: text/html; charset=UTF-8');
+        exit(strtr(<<<'HTML'
+<!doctype html><meta charset="utf-8"><title>User administration</title>
+<style>body{font:16px sans-serif;max-width:960px;margin:2rem auto}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:.45rem;text-align:left}fieldset{margin:1rem 0}textarea{width:100%;min-height:22rem;font:13px monospace}.row{display:flex;gap:1rem;flex-wrap:wrap}.row>*{flex:1}button{margin:.3rem}.status{min-height:1.3rem;color:#174e17}.error{color:#992000}</style>
+<h1>Administration</h1><p><a href="?action=acl_admin_users">Users</a> · <a href="?action=acl_admin">ACL</a></p>
+<h2>Users</h2><table><thead><tr><th>User</th><th>config.php</th><th>ACL</th><th>Actions</th></tr></thead><tbody>__ROWS__</tbody></table>
+<fieldset><legend>Create user</legend><div class="row"><label>Username <input id="new-name"></label><label>Password <input id="new-pass" type="password"></label><label>Confirm <input id="new-confirm" type="password"></label></div><label>Copy settings from <select id="new-copy">__OPTIONS__</select></label> <label><input id="new-acl" type="checkbox"> Copy ACL</label><button id="create">Create user</button></fieldset>
+<fieldset id="editor" hidden><legend>User: <span id="selected"></span></legend><p><button id="load">Reload</button> <a id="acl-link" href="?action=acl_admin">Edit ACL</a></p><div class="row"><label>New password <input id="pass" type="password"></label><label>Confirm <input id="confirm" type="password"></label><button id="password">Change password</button><button id="delete">Delete user</button></div><div class="row"><label>Duplicate as <input id="clone-name"></label><label>Password <input id="clone-pass" type="password"></label><label>Confirm <input id="clone-confirm" type="password"></label><label><input id="clone-acl" type="checkbox"> Copy ACL</label><button id="clone">Duplicate</button></div><p>Advanced config.php editor. Only a PHP file returning a literal array can be saved. The previous valid version is retained once as <code>config.php.previous</code>.</p><textarea id="content" spellcheck="false"></textarea><p><button id="validate">Validate</button><button id="save">Save configuration</button></p></fieldset><p id="status" class="status"></p>
+<script>
+const token='__TOKEN__',q=s=>document.querySelector(s);let current='';
+async function call(action,data){let f=new FormData;f.append('token',token);for(const [k,v] of Object.entries(data))f.append(k,v);let r=await fetch('?action='+action,{method:'POST',body:f}),t=await r.text(),j;try{j=JSON.parse(t)}catch{throw Error(t||'Request failed')};if(!r.ok||!j.ok)throw Error(j.error||'Request failed');return j}
+function msg(v,bad=false){q('#status').textContent=v;q('#status').className=bad?'status error':'status'}
+async function choose(user){current=user;q('#selected').textContent=user;q('#editor').hidden=false;q('#acl-link').href='?action=acl_admin&user='+encodeURIComponent(user);await load()}
+async function load(){try{let r=await fetch('?action=acl_admin_config&user='+encodeURIComponent(current)),t=await r.text();if(!r.ok)throw Error(t);q('#content').value=JSON.parse(t).content;msg('Configuration loaded.')}catch(e){msg(e.message,true)}}
+document.querySelectorAll('[data-user]').forEach(b=>b.onclick=()=>choose(b.dataset.user));q('#load').onclick=load;
+q('#create').onclick=async()=>{try{await call('acl_admin_user_create',{username:q('#new-name').value,password:q('#new-pass').value,password_confirm:q('#new-confirm').value,copy_from:q('#new-copy').value,copy_acl:q('#new-acl').checked?'1':''});location.reload()}catch(e){msg(e.message,true)}};
+q('#password').onclick=async()=>{try{await call('acl_admin_user_password',{user:current,password:q('#pass').value,password_confirm:q('#confirm').value});msg('Password updated.')}catch(e){msg(e.message,true)}};
+q('#clone').onclick=async()=>{try{await call('acl_admin_user_clone',{source:current,username:q('#clone-name').value,password:q('#clone-pass').value,password_confirm:q('#clone-confirm').value,copy_acl:q('#clone-acl').checked?'1':''});location.reload()}catch(e){msg(e.message,true)}};
+q('#validate').onclick=async()=>{try{let j=await call('acl_admin_config_validate',{user:current,content:q('#content').value});msg('Valid configuration ('+j.keys.length+' keys).')}catch(e){msg(e.message,true)}};
+q('#save').onclick=async()=>{try{await call('acl_admin_config_save',{user:current,content:q('#content').value});msg('Configuration saved atomically.')}catch(e){msg(e.message,true)}};
+q('#delete').onclick=async()=>{if(!confirm('Delete '+current+'?'))return;try{await call('acl_admin_user_delete',{user:current});location.reload()}catch(e){msg(e.message,true)}};
+</script>
+HTML, ['__ROWS__' => $rows, '__OPTIONS__' => $options, '__TOKEN__' => $token]));
+    }
+
     private static function adminPage(): never
     {
         $users = self::adminUsers(); $token = json_encode((string)($_SESSION['token'] ?? ''), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); $opts = '';
-        foreach ($users as $u) $opts .= '<option>' . htmlspecialchars($u, ENT_QUOTES) . '</option>';
+        $selected = (string) ($_GET['user'] ?? '');
+        foreach ($users as $u) $opts .= '<option' . ($u === $selected ? ' selected' : '') . '>' . htmlspecialchars($u, ENT_QUOTES) . '</option>';
         header('content-type: text/html; charset=UTF-8');
-        exit("<!doctype html><meta charset=utf-8><title>ACL Administration</title><style>body{font:16px sans-serif;max-width:760px;margin:2rem auto}li{margin:.25rem}.state{margin:1rem 0}.hint{color:#555}button{margin:.5rem}.warn{color:#8a3b00}</style><h1>ACL Administration</h1><p>Read visibility only. A checked folder grants recursive read. A ◐ folder is traversal-only, computed from a selected descendant and never stored.</p><p class=hint>ACLs are allow-only: to exclude a child, remove its selected parent and select only the desired branches.</p><label>User <select id=u>$opts</select></label><button id=save>Save permissions</button><p id=status class=state></p><ul id=tree></ul><script>const t=$token,q=document.querySelector.bind(document);let sel=new Set;function ancestor(p){for(const x of sel)if(p!==x&&p.startsWith(x+'/'))return x}function descendant(p){for(const x of sel)if(x.startsWith(p+'/'))return true}function sync(c,p,label){let parent=ancestor(p),exact=sel.has(p);c.checked=exact||!!parent;c.indeterminate=!exact&&!parent&&descendant(p);c.disabled=!!parent;label.textContent=(c.indeterminate?'◐ ':c.checked?'☑ ':'☐ ')+(parent?'inherited: ':'')+p.split('/').pop()}function drawItem(x,el){let l=document.createElement('li'),c=document.createElement('input'),label=document.createElement('span');c.type='checkbox';sync(c,x.path,label);c.onchange=()=>{if(c.checked){for(const v of [...sel])if(v.startsWith(x.path+'/'))sel.delete(v);sel.add(x.path)}else sel.delete(x.path);refresh()};l.append(c,label);let a=document.createElement('button');a.textContent='expand';a.onclick=()=>{let z=document.createElement('ul');l.append(z);load(x.path,z);a.remove()};l.append(a);el.append(l)}function refresh(){for(const x of document.querySelectorAll('#tree input'))sync(x,x.dataset.path,x.nextSibling)}async function load(p='',el=q('#tree')){let r=await fetch('?action=acl_admin_tree&path='+encodeURIComponent(p)),text=await r.text();if(!r.ok)throw Error(text||'Tree load failed.');let j=JSON.parse(text);for(const x of j.items){let before=el.children.length;drawItem(x,el);el.children[before].querySelector('input').dataset.path=x.path}}async function user(){sel=new Set;q('#tree').replaceChildren();let r=await fetch('?action=acl_admin_data&user='+encodeURIComponent(q('#u').value)),text=await r.text();if(!r.ok){q('#status').textContent=text||'Unable to load ACL.';return}let j=JSON.parse(text);sel=new Set(j.allow);q('#status').textContent=j.state==='malformed'?'Warning: the existing ACL is malformed. It grants no access until you explicitly save a replacement.':j.state==='missing'?'No ACL file: this user currently has no read access.':'Loaded canonical ACL.';q('#status').className=j.state==='malformed'?'state warn':'state';await load()}q('#u').onchange=user;q('#save').onclick=async()=>{let f=new FormData();f.append('token',t);f.append('user',q('#u').value);for(const x of sel)f.append('allow[]',x);let r=await fetch('?action=acl_admin',{method:'POST',body:f}),text=await r.text(),j;try{j=JSON.parse(text)}catch{q('#status').textContent=text||'Save failed.';return}if(!r.ok||!j.ok){q('#status').textContent=j.error||'Save failed.';return}sel=new Set(j.allow);q('#status').textContent='Saved. ACL reloaded from disk.';await user()};if(q('#u').value)user();else q('#status').textContent='No editable users.';</script>");
+        exit("<!doctype html><meta charset=utf-8><title>ACL Administration</title><style>body{font:16px sans-serif;max-width:760px;margin:2rem auto}li{margin:.25rem}.state{margin:1rem 0}.hint{color:#555}button{margin:.5rem}.warn{color:#8a3b00}</style><h1>ACL Administration</h1><p><a href='?action=acl_admin_users'>Users</a> · ACL</p><p>Read visibility only. A checked folder grants recursive read. A ◐ folder is traversal-only, computed from a selected descendant and never stored.</p><p class=hint>ACLs are allow-only: to exclude a child, remove its selected parent and select only the desired branches.</p><label>User <select id=u>$opts</select></label><button id=save>Save permissions</button><p id=status class=state></p><ul id=tree></ul><script>const t=$token,q=document.querySelector.bind(document);let sel=new Set;function ancestor(p){for(const x of sel)if(p!==x&&p.startsWith(x+'/'))return x}function descendant(p){for(const x of sel)if(x.startsWith(p+'/'))return true}function sync(c,p,label){let parent=ancestor(p),exact=sel.has(p);c.checked=exact||!!parent;c.indeterminate=!exact&&!parent&&descendant(p);c.disabled=!!parent;label.textContent=(c.indeterminate?'◐ ':c.checked?'☑ ':'☐ ')+(parent?'inherited: ':'')+p.split('/').pop()}function drawItem(x,el){let l=document.createElement('li'),c=document.createElement('input'),label=document.createElement('span');c.type='checkbox';sync(c,x.path,label);c.onchange=()=>{if(c.checked){for(const v of [...sel])if(v.startsWith(x.path+'/'))sel.delete(v);sel.add(x.path)}else sel.delete(x.path);refresh()};l.append(c,label);let a=document.createElement('button');a.textContent='expand';a.onclick=()=>{let z=document.createElement('ul');l.append(z);load(x.path,z);a.remove()};l.append(a);el.append(l)}function refresh(){for(const x of document.querySelectorAll('#tree input'))sync(x,x.dataset.path,x.nextSibling)}async function load(p='',el=q('#tree')){let r=await fetch('?action=acl_admin_tree&path='+encodeURIComponent(p)),text=await r.text();if(!r.ok)throw Error(text||'Tree load failed.');let j=JSON.parse(text);for(const x of j.items){let before=el.children.length;drawItem(x,el);el.children[before].querySelector('input').dataset.path=x.path}}async function user(){sel=new Set;q('#tree').replaceChildren();let r=await fetch('?action=acl_admin_data&user='+encodeURIComponent(q('#u').value)),text=await r.text();if(!r.ok){q('#status').textContent=text||'Unable to load ACL.';return}let j=JSON.parse(text);sel=new Set(j.allow);q('#status').textContent=j.state==='malformed'?'Warning: the existing ACL is malformed. It grants no access until you explicitly save a replacement.':j.state==='missing'?'No ACL file: this user currently has no read access.':'Loaded canonical ACL.';q('#status').className=j.state==='malformed'?'state warn':'state';await load()}q('#u').onchange=user;q('#save').onclick=async()=>{let f=new FormData();f.append('token',t);f.append('user',q('#u').value);for(const x of sel)f.append('allow[]',x);let r=await fetch('?action=acl_admin',{method:'POST',body:f}),text=await r.text(),j;try{j=JSON.parse(text)}catch{q('#status').textContent=text||'Save failed.';return}if(!r.ok||!j.ok){q('#status').textContent=j.error||'Save failed.';return}sel=new Set(j.allow);q('#status').textContent='Saved. ACL reloaded from disk.';await user()};if(q('#u').value)user();else q('#status').textContent='No editable users.';</script>");
     }
 
     private static function adminError(string $message, int $code): never { http_response_code($code); exit(htmlspecialchars($message, ENT_QUOTES)); }

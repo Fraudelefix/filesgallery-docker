@@ -54,6 +54,37 @@ if (function_exists('symlink')) {
     symlink($outside, "$root/Evil");
     check(acl_user_dir('Evil', $root) === null, 'symlink user directory rejected');
 }
+
+// Phase 4 user-config helpers: safe direct paths, literal config validation,
+// atomic replacement/backup, creation, duplication inputs and deletion rules.
+mkdir("$root/ConfigUser", 0700);
+check(fg_user_config_path('ConfigUser', $root) === null, 'missing config is not a file');
+check(fg_user_config_path('ConfigUser', $root, false) === "$root/ConfigUser/config.php", 'new config target is direct');
+$validHash = password_hash('validation-password', PASSWORD_DEFAULT);
+$validConfig = "<?php\nreturn ['password' => " . var_export($validHash, true) . ", 'lang_default' => 'fr', 'allow_download' => true];\n";
+check(fg_validate_config_content($validConfig)['lang_default'] === 'fr', 'literal config is valid');
+foreach (["<?php return 'no';", "<?php \$x = []; return \$x;", "<?php return ['x' => system('id')];", "<?php return ['x' => []]; echo 'x';", "<?php return ['x' => \"bad\0\"];" ] as $invalidConfig) {
+    try { fg_validate_config_content($invalidConfig); } catch (Throwable) { check(true, 'unsafe or non-array config rejected'); continue; }
+    throw new RuntimeException('Failed: unsafe config accepted');
+}
+fg_atomic_save_config_content('ConfigUser', $root, $validConfig);
+check(is_file("$root/ConfigUser/config.php") && (fileperms("$root/ConfigUser/config.php") & 0777) === 0600, 'config saved with restrictive permissions');
+$beforeConfig = file_get_contents("$root/ConfigUser/config.php");
+fg_atomic_save_config_content('ConfigUser', $root, "<?php\nreturn ['password' => " . var_export(password_hash('new-validation-password', PASSWORD_DEFAULT), true) . "];\n");
+check(file_get_contents("$root/ConfigUser/config.php.previous") === $beforeConfig, 'previous config backup retained');
+if (function_exists('symlink')) {
+    mkdir("$root/LinkedConfig", 0700); file_put_contents("$root/outside-config.php", $validConfig);
+    symlink("$root/outside-config.php", "$root/LinkedConfig/config.php");
+    check(fg_user_config_path('LinkedConfig', $root) === null, 'symlink config rejected');
+}
+fg_create_user('Created', 'created-password', $root);
+$created = fg_user_config_state('Created', $root);
+check($created['state'] === 'valid' && password_verify('created-password', $created['config']['password']), 'user creation writes Files Gallery password hash');
+fg_create_user('Cloned', 'cloned-password', $root, $created['config'], ['allow' => ['Family/Shared']]);
+check(fg_user_config_state('Cloned', $root)['state'] === 'valid' && acl_load('Cloned', $root)['allow'] === ['Family/Shared'], 'user clone inputs save only config and acl');
+mkdir("$root/admin", 0700); fg_atomic_save_config_content('admin', $root, $validConfig);
+try { fg_delete_user('admin', $root); } catch (InvalidArgumentException) { check(true, 'admin deletion rejected'); }
+fg_delete_user('Cloned', $root); check(acl_user_dir('Cloned', $root) === null, 'ordinary user deletion removes managed files only');
 check(acl_editor_state('Victor', $root) === ['allow' => ['Family/Shared'], 'state' => 'valid'], 'editor loads valid ACL');
 check(acl_editor_state('Missing', $root) === ['allow' => [], 'state' => 'missing'], 'editor missing ACL fails closed');
 check(acl_editor_state('BadAllow', $root) === ['allow' => [], 'state' => 'malformed'], 'editor malformed ACL fails closed');
