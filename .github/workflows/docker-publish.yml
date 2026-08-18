@@ -240,50 +240,64 @@ jobs:
           ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=file&file=../etc/passwd"' | grep -q 'root:'
           echo 'ACL UI TEST: authorization, current ACL and lazy tree'
           echo 'ACL UI: unauthenticated page request'
-          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" "http://127.0.0.1:80?action=acl_admin"')" = 401
-          echo 'ACL UI: normal-user page request'
-          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-cookie "http://127.0.0.1:80?action=acl_admin"')" = 403
+          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" "http://127.0.0.1:80?action=admin"')" = 401
+          echo 'ACL UI: normal-user page requests'
+          for action in admin admin_users admin_acl; do
+            test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-cookie 'http://127.0.0.1:80?action=$action'")" = 403
+          done
+          echo 'ACL UI: admin administration home and navigation asset'
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=admin"' > admin-home.html
+          grep -q 'Administration (Docker version)' admin-home.html
+          grep -q '/?action=admin_users' admin-home.html; grep -q '/?action=admin_acl' admin-home.html; grep -q '/?action=tests' admin-home.html
+          grep -q '/docker-admin/admin.js' login-admin.html
+          ! grep -q '/docker-admin/admin.js' login-response.html
           echo 'ACL UI: admin page request'
-          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin"' > acl-admin.html
-          grep -q 'ACL Administration\|traversal-only' acl-admin.html
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=admin_acl"' > acl-admin.html
+          grep -q 'Administration (Docker version)' acl-admin.html; grep -q 'traversal-only' acl-admin.html
+          grep -q '/?action=admin_users' acl-admin.html; grep -q '/?action=admin_acl' acl-admin.html; grep -q '/?action=tests' acl-admin.html
           ! grep -q '<option>evil</option>' acl-admin.html
+          echo 'ACL UI: former routes fall through to upstream handling'
+          for action in acl_admin acl_admin_users; do
+            docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-admin.cookie 'http://127.0.0.1:80?action=$action'" > "former-$action.html"
+            ! grep -q 'Administration (Docker version)' "former-$action.html"
+          done
           echo 'ACL UI: admin current ACL request'
-          if ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail-with-body --silent --show-error -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_data&user=victor"' > acl-victor.json; then
+          if ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail-with-body --silent --show-error -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=admin_acl_data&user=victor"' > acl-victor.json; then
             cat acl-victor.json; docker exec "$container" tail -n 80 /var/log/apache2/error.log || true; exit 1
           fi
           echo 'ACL UI: current ACL response'; cat acl-victor.json
           grep -q 'Family.*Shared' acl-victor.json; grep -q 'Videos' acl-victor.json
           echo 'ACL UI: admin lazy tree request'
-          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_tree&path="' > acl-tree.json
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=admin_acl_tree&path="' > acl-tree.json
           grep -q 'Family\|Videos' acl-tree.json
           echo 'ACL UI: malformed and missing ACL state'
-          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_data&user=bad-acl"' | grep -q '"state":"malformed"'
-          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_data&user=missing-acl"' | grep -q '"state":"missing"'
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=admin_acl_data&user=bad-acl"' | grep -q '"state":"malformed"'
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=admin_acl_data&user=missing-acl"' | grep -q '"state":"missing"'
           echo 'ACL UI: normal-user tree request'
-          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-cookie "http://127.0.0.1:80?action=acl_admin_tree&path="')" = 403
+          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-cookie "http://127.0.0.1:80?action=admin_acl_tree&path="')" = 403
           admin_token="$(sed -n 's/.*"session_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' login-admin.html | head -n1)"
           victor_token="$(sed -n 's/.*"session_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' login-response.html | head -n1)"
           test -n "$admin_token"; test -n "$victor_token"
           evil_before="$(sha256sum test-config/evil-target/acl.php | awk '{print $1}')"
           echo 'ACL UI: symlink user data and save requests'
-          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_data&user=evil"')" = 404
-          test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=evil' --data-urlencode 'allow[]=Family' 'http://127.0.0.1:80?action=acl_admin'")" = 404
+          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=admin_acl_data&user=evil"')" = 404
+          test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=evil' --data-urlencode 'allow[]=Family' 'http://127.0.0.1:80?action=admin_acl'")" = 404
           test "$(sha256sum test-config/evil-target/acl.php | awk '{print $1}')" = "$evil_before"
           acl_before="$(docker exec "$container" sha256sum /config/users/victor/acl.php | awk '{print $1}')"
           reject_acl() {
             expected="$1"; shift
-            code="$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=victor' $* 'http://127.0.0.1:80?action=acl_admin'")"
+            code="$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=victor' $* 'http://127.0.0.1:80?action=admin_acl'")"
             test "$code" = "$expected"
             test "$(docker exec "$container" sha256sum /config/users/victor/acl.php | awk '{print $1}')" = "$acl_before"
           }
           echo 'ACL UI TEST: CSRF and invalid requests preserve the ACL file'
           echo 'ACL UI: normal-user POST request'
-          test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-cookie --data-urlencode 'token=$victor_token' --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family' 'http://127.0.0.1:80?action=acl_admin'")" = 403
+          test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-cookie --data-urlencode 'token=$victor_token' --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family' 'http://127.0.0.1:80?action=admin_acl'")" = 403
           echo 'ACL UI: unauthenticated POST request'
-          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family' 'http://127.0.0.1:80?action=acl_admin'" | grep -q '"error":"login"'
+          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family' 'http://127.0.0.1:80?action=admin_acl'" | grep -q '"error":"login"'
           test "$(docker exec "$container" sha256sum /config/users/victor/acl.php | awk '{print $1}')" = "$acl_before"
           echo 'ACL UI: missing CSRF request'
-          test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-admin.cookie --data-urlencode 'user=victor' 'http://127.0.0.1:80?action=acl_admin'")" = 403
+          test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-admin.cookie --data-urlencode 'user=victor' 'http://127.0.0.1:80?action=admin_acl'")" = 403
           test "$(docker exec "$container" sha256sum /config/users/victor/acl.php | awk '{print $1}')" = "$acl_before"
           echo 'ACL UI: invalid CSRF request'
           reject_acl 403 "--data-urlencode 'token=invalid'"
@@ -295,54 +309,58 @@ jobs:
           reject_acl 400 "--data-urlencode 'allow[]=DoesNotExist'"
           reject_acl 400 "--data-urlencode 'allow[]=Family/Shared/link'"
           echo 'ACL UI TEST: atomic save and immediate enforcement'
-          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family' 'http://127.0.0.1:80?action=acl_admin'" > acl-save-family.json
+          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family' 'http://127.0.0.1:80?action=admin_acl'" > acl-save-family.json
           grep -q '"Family"' acl-save-family.json
           acl_after_family="$(docker exec "$container" sha256sum /config/users/victor/acl.php | awk '{print $1}')"; test "$acl_after_family" != "$acl_before"
           docker exec "$container" php -l /config/users/victor/acl.php
           docker exec "$container" sh -c "grep -F \"'allow' => [\" /config/users/victor/acl.php; grep -F \"'Family',\" /config/users/victor/acl.php; test \"\$(stat -c %a /config/users/victor/acl.php)\" = 600"
           victor_family_hash="$(login_user victor victor-test-password)"; test "$victor_family_hash" != "$menu_cache_hash"
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-victor.cookie "http://127.0.0.1:80?action=file&file=Family/Private/secret.txt"' | grep -q 'private secret'
-          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family/Shared' 'http://127.0.0.1:80?action=acl_admin'" > acl-save-shared.json
+          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=victor' --data-urlencode 'allow[]=Family/Shared' 'http://127.0.0.1:80?action=admin_acl'" > acl-save-shared.json
           grep -q 'Family.*Shared' acl-save-shared.json
           victor_shared_hash="$(login_user victor victor-test-password)"; test "$victor_shared_hash" != "$victor_family_hash"
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-victor.cookie "http://127.0.0.1:80?action=file&file=Family/Shared/shared.txt"' | grep -q 'shared content'
           ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-victor.cookie "http://127.0.0.1:80?action=file&file=Family/Private/secret.txt"' | grep -q 'private secret'
           echo 'USER ADMIN TEST: admin-only list and account operations'
-          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-cookie "http://127.0.0.1:80?action=acl_admin_users"')" = 403
+          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-cookie "http://127.0.0.1:80?action=admin_users"')" = 403
           echo 'USER ADMIN: admin users page'
-          if ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail-with-body --silent --show-error -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_users"' > users-admin.html; then
+          if ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail-with-body --silent --show-error -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=admin_users"' > users-admin.html; then
             cat users-admin.html; docker exec "$container" tail -n 100 /var/log/apache2/error.log || true; exit 1
           fi
-          grep -q 'User administration\|admin' users-admin.html; ! grep -q '>evil<' users-admin.html
+          grep -q 'Administration (Docker version)' users-admin.html; grep -q 'admin' users-admin.html; ! grep -q '>evil<' users-admin.html
+          grep -q '/?action=admin_users' users-admin.html; grep -q '/?action=admin_acl' users-admin.html; grep -q '/?action=tests' users-admin.html
+          echo 'USER ADMIN: native diagnostics remain available to admin'
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=tests"' > native-tests.html
+          grep -q 'Tests\|tests' native-tests.html
           echo 'USER ADMIN: create phase4'
-          if ! docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail-with-body --silent --show-error -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'username=phase4' --data-urlencode 'password=phase4-password' --data-urlencode 'password_confirm=phase4-password' 'http://127.0.0.1:80?action=acl_admin_user_create'" > create-phase4.json; then
+          if ! docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail-with-body --silent --show-error -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'username=phase4' --data-urlencode 'password=phase4-password' --data-urlencode 'password_confirm=phase4-password' 'http://127.0.0.1:80?action=admin_user_create'" > create-phase4.json; then
             cat create-phase4.json; docker exec "$container" tail -n 100 /var/log/apache2/error.log || true; exit 1
           fi
           echo 'USER ADMIN: create response'; cat create-phase4.json
           grep -q '"ok":true' create-phase4.json
           login_user phase4 phase4-password >/dev/null
           grep -q '"username"[[:space:]]*:[[:space:]]*"phase4"' login-phase4.html
-          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-phase4.cookie "http://127.0.0.1:80?action=acl_admin_config&user=phase4"')" = 403
-          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_config&user=phase4"' > phase4-config.json
+          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-phase4.cookie "http://127.0.0.1:80?action=admin_config&user=phase4"')" = 403
+          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=admin_config&user=phase4"' > phase4-config.json
           grep -q 'files_exclude\|password' phase4-config.json
-          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=phase4' --data-urlencode 'lang_default=en' 'http://127.0.0.1:80?action=acl_admin_config_guided'" | grep -q '"lang_default":"en"'
+          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=phase4' --data-urlencode 'lang_default=en' 'http://127.0.0.1:80?action=admin_config_guided'" | grep -q '"lang_default":"en"'
           docker exec "$container" php -r '$config=include "/config/users/phase4/config.php"; exit(($config["lang_default"] ?? "") === "en" ? 0 : 1);'
           phase4_before="$(docker exec "$container" sha256sum /config/users/phase4/config.php | awk '{print $1}')"
-          test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=phase4' --data-urlencode 'content=<?php return not-an-array;' 'http://127.0.0.1:80?action=acl_admin_config_save'")" = 400
+          test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=phase4' --data-urlencode 'content=<?php return not-an-array;' 'http://127.0.0.1:80?action=admin_config_save'")" = 400
           test "$(docker exec "$container" sha256sum /config/users/phase4/config.php | awk '{print $1}')" = "$phase4_before"
-          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=phase4' --data-urlencode 'content@/config/users/phase4/config.php' 'http://127.0.0.1:80?action=acl_admin_config_save'" | grep -q '"ok":true'
+          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=phase4' --data-urlencode 'content@/config/users/phase4/config.php' 'http://127.0.0.1:80?action=admin_config_save'" | grep -q '"ok":true'
           docker exec "$container" sh -c 'php -l /config/users/phase4/config.php; test -f /config/users/phase4/config.php.previous; test "$(stat -c %a /config/users/phase4/config.php)" = 600'
-          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=phase4' --data-urlencode 'password=phase4-new-password' --data-urlencode 'password_confirm=phase4-new-password' 'http://127.0.0.1:80?action=acl_admin_user_password'" | grep -q '"ok":true'
+          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=phase4' --data-urlencode 'password=phase4-new-password' --data-urlencode 'password_confirm=phase4-new-password' 'http://127.0.0.1:80?action=admin_user_password'" | grep -q '"ok":true'
           login_user phase4 phase4-new-password >/dev/null
-          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'source=phase4' --data-urlencode 'username=phase4copy' --data-urlencode 'password=phase4copy-password' --data-urlencode 'password_confirm=phase4copy-password' --data-urlencode 'copy_acl=1' 'http://127.0.0.1:80?action=acl_admin_user_clone'" | grep -q '"ok":true'
+          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'source=phase4' --data-urlencode 'username=phase4copy' --data-urlencode 'password=phase4copy-password' --data-urlencode 'password_confirm=phase4copy-password' --data-urlencode 'copy_acl=1' 'http://127.0.0.1:80?action=admin_user_clone'" | grep -q '"ok":true'
           login_user phase4copy phase4copy-password >/dev/null
-          test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=admin' 'http://127.0.0.1:80?action=acl_admin_user_delete'")" = 400
-          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=phase4copy' 'http://127.0.0.1:80?action=acl_admin_user_delete'" | grep -q '"ok":true'
+          test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=admin' 'http://127.0.0.1:80?action=admin_user_delete'")" = 400
+          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=phase4copy' 'http://127.0.0.1:80?action=admin_user_delete'" | grep -q '"ok":true'
           test ! -e test-config/users/phase4copy
           echo 'USER ADMIN TEST: symlinked config is refused without touching sentinel'
           sentinel_before="$(sha256sum test-config/evil-target/config.php | awk '{print $1}')"
           docker exec "$container" sh -c 'mv /config/users/phase4/config.php /config/users/phase4/config.php.real; ln -s ../../evil-target/config.php /config/users/phase4/config.php'
-          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_config&user=phase4"')" = 404
+          test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=admin_config&user=phase4"')" = 404
           test "$(sha256sum test-config/evil-target/config.php | awk '{print $1}')" = "$sentinel_before"
           docker exec "$container" sh -c 'rm /config/users/phase4/config.php; mv /config/users/phase4/config.php.real /config/users/phase4/config.php'
           if docker run --rm --entrypoint php "$image" /usr/local/share/filesgallery/acl/patch.php /usr/local/share/filesgallery/acl/acl.php /tmp/out; then
