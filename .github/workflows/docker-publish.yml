@@ -314,7 +314,10 @@ jobs:
             cat users-admin.html; docker exec "$container" tail -n 100 /var/log/apache2/error.log || true; exit 1
           fi
           grep -q 'User administration\|admin' users-admin.html; ! grep -q '>evil<' users-admin.html
-          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'username=phase4' --data-urlencode 'password=phase4-password' --data-urlencode 'password_confirm=phase4-password' 'http://127.0.0.1:80?action=acl_admin_user_create'" > create-phase4.json
+          echo 'USER ADMIN: create phase4'
+          if ! docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail-with-body --silent --show-error -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'username=phase4' --data-urlencode 'password=phase4-password' --data-urlencode 'password_confirm=phase4-password' 'http://127.0.0.1:80?action=acl_admin_user_create'" > create-phase4.json; then
+            cat create-phase4.json; docker exec "$container" tail -n 100 /var/log/apache2/error.log || true; exit 1
+          fi
           grep -q '"ok":true' create-phase4.json
           phase4_hash="$(login_user phase4 phase4-password)"; test -n "$phase4_hash"
           test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-phase4.cookie "http://127.0.0.1:80?action=acl_admin_config&user=phase4"')" = 403
