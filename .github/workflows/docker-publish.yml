@@ -199,7 +199,9 @@ jobs:
             docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -c '$cookie' http://127.0.0.1:80" > "form-$user.html"
             token="$(sed -n 's/.*name="token" value="\([^"]*\)".*/\1/p' "form-$user.html")"; test -n "$token"
             docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b '$cookie' -c '$cookie' -d 'fusername=$user&fpassword=$password&token=$token' http://127.0.0.1:80" > "$response"
-            sed -n 's/.*"menu_cache_hash"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$response" | head -n1
+            hash="$(sed -n 's/.*"menu_cache_hash"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$response" | head -n1)"
+            if [ -z "$hash" ]; then echo "Login did not return a menu hash for $user" >&2; cat "$response" >&2; return 1; fi
+            printf '%s\n' "$hash"
           }
           list_dir() {
             cookie="$1" directory="$2" hash="$3"
