@@ -309,7 +309,10 @@ jobs:
           ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -b /tmp/fg-victor.cookie "http://127.0.0.1:80?action=file&file=Family/Private/secret.txt"' | grep -q 'private secret'
           echo 'USER ADMIN TEST: admin-only list and account operations'
           test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-cookie "http://127.0.0.1:80?action=acl_admin_users"')" = 403
-          docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_users"' > users-admin.html
+          echo 'USER ADMIN: admin users page'
+          if ! docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail-with-body --silent --show-error -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_users"' > users-admin.html; then
+            cat users-admin.html; docker exec "$container" tail -n 100 /var/log/apache2/error.log || true; exit 1
+          fi
           grep -q 'User administration\|admin' users-admin.html; ! grep -q '>evil<' users-admin.html
           docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'username=phase4' --data-urlencode 'password=phase4-password' --data-urlencode 'password_confirm=phase4-password' 'http://127.0.0.1:80?action=acl_admin_user_create'" > create-phase4.json
           grep -q '"ok":true' create-phase4.json
