@@ -254,6 +254,7 @@ jobs:
           grep -q 'src="docker-admin/admin.js"' login-admin.html
           ! grep -q 'src="/docker-admin/admin.js"' login-admin.html
           ! grep -q 'docker-admin/admin.js' login-response.html
+          docker exec "$container" grep -F '<svg class="svg-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"' /var/www/html/docker-admin/admin.js
           echo 'ACL UI: admin page request'
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=admin_acl"' > acl-admin.html
           grep -q 'Administration (Docker version)' acl-admin.html; grep -q 'traversal-only' acl-admin.html

@@ -16,7 +16,7 @@
     link.href = '?action=admin';
     link.title = 'Administration (Docker version)';
     link.setAttribute('aria-label', 'Administration (Docker version)');
-    link.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.42 0-8 2.24-8 5v3h16v-3c0-2.76-3.58-5-8-5Z"/></svg>';
+    link.innerHTML = '<svg class="svg-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.42 0-8 2.24-8 5v3h16v-3c0-2.76-3.58-5-8-5Z"/></svg>';
     topbar.insertBefore(link, settings);
     return true;
   };
