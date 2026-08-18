@@ -199,9 +199,7 @@ jobs:
             docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -c '$cookie' http://127.0.0.1:80" > "form-$user.html"
             token="$(sed -n 's/.*name="token" value="\([^"]*\)".*/\1/p' "form-$user.html")"; test -n "$token"
             docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b '$cookie' -c '$cookie' -d 'fusername=$user&fpassword=$password&token=$token' http://127.0.0.1:80" > "$response"
-            hash="$(sed -n 's/.*"menu_cache_hash"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$response" | head -n1)"
-            if [ -z "$hash" ]; then echo "Login did not return a menu hash for $user" >&2; cat "$response" >&2; return 1; fi
-            printf '%s\n' "$hash"
+            sed -n 's/.*"menu_cache_hash"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$response" | head -n1
           }
           list_dir() {
             cookie="$1" directory="$2" hash="$3"
@@ -322,10 +320,13 @@ jobs:
           fi
           echo 'USER ADMIN: create response'; cat create-phase4.json
           grep -q '"ok":true' create-phase4.json
-          phase4_hash="$(login_user phase4 phase4-password)"; test -n "$phase4_hash"
+          login_user phase4 phase4-password >/dev/null
+          grep -q '"username"[[:space:]]*:[[:space:]]*"phase4"' login-phase4.html
           test "$(docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w "%{http_code}" -b /tmp/fg-phase4.cookie "http://127.0.0.1:80?action=acl_admin_config&user=phase4"')" = 403
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=acl_admin_config&user=phase4"' > phase4-config.json
           grep -q 'files_exclude\|password' phase4-config.json
+          docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=phase4' --data-urlencode 'lang_default=en' 'http://127.0.0.1:80?action=acl_admin_config_guided'" | grep -q '"lang_default":"en"'
+          docker exec "$container" php -r '$config=include "/config/users/phase4/config.php"; exit(($config["lang_default"] ?? "") === "en" ? 0 : 1);'
           phase4_before="$(docker exec "$container" sha256sum /config/users/phase4/config.php | awk '{print $1}')"
           test "$(docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --silent -o /dev/null -w '%{http_code}' -b /tmp/fg-admin.cookie --data-urlencode 'token=$admin_token' --data-urlencode 'user=phase4' --data-urlencode 'content=<?php return not-an-array;' 'http://127.0.0.1:80?action=acl_admin_config_save'")" = 400
           test "$(docker exec "$container" sha256sum /config/users/phase4/config.php | awk '{print $1}')" = "$phase4_before"

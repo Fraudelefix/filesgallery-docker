@@ -75,7 +75,7 @@ final class FilesGalleryAclIntegration
         $action = U::get('action');
         $actions = ['acl_admin', 'acl_admin_tree', 'acl_admin_data', 'acl_admin_users', 'acl_admin_user',
             'acl_admin_user_create', 'acl_admin_user_password', 'acl_admin_user_delete', 'acl_admin_user_clone',
-            'acl_admin_config', 'acl_admin_config_validate', 'acl_admin_config_save'];
+            'acl_admin_config', 'acl_admin_config_validate', 'acl_admin_config_save', 'acl_admin_config_guided'];
         if (!in_array($action, $actions, true)) return false;
         if (self::$username !== 'admin') self::adminError('ACL administration requires the admin account.', 403);
         if ($action === 'acl_admin_tree') { self::treeJson((string) ($_GET['path'] ?? '')); return true; }
@@ -84,6 +84,7 @@ final class FilesGalleryAclIntegration
         if ($action === 'acl_admin_config') { self::configJson((string) ($_GET['user'] ?? '')); return true; }
         if ($action === 'acl_admin_config_validate') { self::validateConfig(); return true; }
         if ($action === 'acl_admin_config_save') { self::saveConfig(); return true; }
+        if ($action === 'acl_admin_config_guided') { self::saveGuidedConfig(); return true; }
         if ($action === 'acl_admin_user_create') { self::createUser(); return true; }
         if ($action === 'acl_admin_user_password') { self::changePassword(); return true; }
         if ($action === 'acl_admin_user_delete') { self::deleteUser(); return true; }
@@ -174,6 +175,21 @@ final class FilesGalleryAclIntegration
         catch (InvalidArgumentException) { self::adminError('Invalid PHP configuration.', 400); }
         catch (Throwable) { self::adminError('Configuration save failed.', 500); }
         self::json(['ok' => true]);
+    }
+
+    /** Saves the small guided form through the same validated atomic helper as Advanced. */
+    private static function saveGuidedConfig(): never
+    {
+        self::csrf(); $user = self::editableUser((string) ($_POST['user'] ?? ''));
+        $lang = (string) ($_POST['lang_default'] ?? '');
+        if (preg_match('/^[a-z]{2}(?:-[A-Z]{2})?$/', $lang) !== 1) self::adminError('Invalid language.', 400);
+        try {
+            $state = fg_user_config_state($user, Config::$storagepath . '/users');
+            if ($state['state'] !== 'valid') self::adminError('Config not available.', 404);
+            $config = $state['config']; $config['lang_default'] = $lang;
+            fg_atomic_save_config($user, Config::$storagepath . '/users', $config);
+        } catch (Throwable) { self::adminError('Guided configuration save failed.', 500); }
+        self::json(['ok' => true, 'lang_default' => $lang]);
     }
 
     private static function createUser(): never
@@ -271,17 +287,18 @@ final class FilesGalleryAclIntegration
 <h1>Administration</h1><p><a href="?action=acl_admin_users">Users</a> · <a href="?action=acl_admin">ACL</a></p>
 <h2>Users</h2><table><thead><tr><th>User</th><th>config.php</th><th>ACL</th><th>Actions</th></tr></thead><tbody>__ROWS__</tbody></table>
 <fieldset><legend>Create user</legend><div class="row"><label>Username <input id="new-name"></label><label>Password <input id="new-pass" type="password"></label><label>Confirm <input id="new-confirm" type="password"></label></div><label>Copy settings from <select id="new-copy">__OPTIONS__</select></label> <label><input id="new-acl" type="checkbox"> Copy ACL</label><button id="create">Create user</button></fieldset>
-<fieldset id="editor" hidden><legend>User: <span id="selected"></span></legend><p><button id="load">Reload</button> <a id="acl-link" href="?action=acl_admin">Edit ACL</a></p><div class="row"><label>New password <input id="pass" type="password"></label><label>Confirm <input id="confirm" type="password"></label><button id="password">Change password</button><button id="delete">Delete user</button></div><div class="row"><label>Duplicate as <input id="clone-name"></label><label>Password <input id="clone-pass" type="password"></label><label>Confirm <input id="clone-confirm" type="password"></label><label><input id="clone-acl" type="checkbox"> Copy ACL</label><button id="clone">Duplicate</button></div><p>Advanced config.php editor. Only a PHP file returning a literal array can be saved. The previous valid version is retained once as <code>config.php.previous</code>.</p><textarea id="content" spellcheck="false"></textarea><p><button id="validate">Validate</button><button id="save">Save configuration</button></p></fieldset><p id="status" class="status"></p>
+<fieldset id="editor" hidden><legend>User: <span id="selected"></span></legend><p><button id="load">Reload</button> <a id="acl-link" href="?action=acl_admin">Edit ACL</a></p><div class="row"><label>New password <input id="pass" type="password"></label><label>Confirm <input id="confirm" type="password"></label><button id="password">Change password</button><button id="delete">Delete user</button></div><div class="row"><label>Duplicate as <input id="clone-name"></label><label>Password <input id="clone-pass" type="password"></label><label>Confirm <input id="clone-confirm" type="password"></label><label><input id="clone-acl" type="checkbox"> Copy ACL</label><button id="clone">Duplicate</button></div><h3>Guided configuration</h3><label>Language <select id="lang"><option value="fr">French</option><option value="en">English</option><option value="de">German</option><option value="es">Spanish</option><option value="it">Italian</option></select></label> <button id="save-lang">Save language</button><h3>Advanced</h3><p>Advanced config.php editor. Only a PHP file returning a literal array can be saved. The previous valid version is retained once as <code>config.php.previous</code>.</p><textarea id="content" spellcheck="false"></textarea><p><button id="validate">Validate</button><button id="save">Save configuration</button></p></fieldset><p id="status" class="status"></p>
 <script>
 const token='__TOKEN__',q=s=>document.querySelector(s);let current='';
 async function call(action,data){let f=new FormData;f.append('token',token);for(const [k,v] of Object.entries(data))f.append(k,v);let r=await fetch('?action='+action,{method:'POST',body:f}),t=await r.text(),j;try{j=JSON.parse(t)}catch{throw Error(t||'Request failed')};if(!r.ok||!j.ok)throw Error(j.error||'Request failed');return j}
 function msg(v,bad=false){q('#status').textContent=v;q('#status').className=bad?'status error':'status'}
 async function choose(user){current=user;q('#selected').textContent=user;q('#editor').hidden=false;q('#acl-link').href='?action=acl_admin&user='+encodeURIComponent(user);await load()}
-async function load(){try{let r=await fetch('?action=acl_admin_config&user='+encodeURIComponent(current)),t=await r.text();if(!r.ok)throw Error(t);q('#content').value=JSON.parse(t).content;msg('Configuration loaded.')}catch(e){msg(e.message,true)}}
+async function load(){try{let r=await fetch('?action=acl_admin_config&user='+encodeURIComponent(current)),t=await r.text();if(!r.ok)throw Error(t);let j=JSON.parse(t);q('#content').value=j.content;if(j.config.lang_default&&q('#lang').querySelector('[value="'+j.config.lang_default+'"]'))q('#lang').value=j.config.lang_default;msg('Configuration loaded.')}catch(e){msg(e.message,true)}}
 document.querySelectorAll('[data-user]').forEach(b=>b.onclick=()=>choose(b.dataset.user));q('#load').onclick=load;
 q('#create').onclick=async()=>{try{await call('acl_admin_user_create',{username:q('#new-name').value,password:q('#new-pass').value,password_confirm:q('#new-confirm').value,copy_from:q('#new-copy').value,copy_acl:q('#new-acl').checked?'1':''});location.reload()}catch(e){msg(e.message,true)}};
 q('#password').onclick=async()=>{try{await call('acl_admin_user_password',{user:current,password:q('#pass').value,password_confirm:q('#confirm').value});msg('Password updated.')}catch(e){msg(e.message,true)}};
 q('#clone').onclick=async()=>{try{await call('acl_admin_user_clone',{source:current,username:q('#clone-name').value,password:q('#clone-pass').value,password_confirm:q('#clone-confirm').value,copy_acl:q('#clone-acl').checked?'1':''});location.reload()}catch(e){msg(e.message,true)}};
+q('#save-lang').onclick=async()=>{try{await call('acl_admin_config_guided',{user:current,lang_default:q('#lang').value});msg('Language saved atomically.');await load()}catch(e){msg(e.message,true)}};
 q('#validate').onclick=async()=>{try{let j=await call('acl_admin_config_validate',{user:current,content:q('#content').value});msg('Valid configuration ('+j.keys.length+' keys).')}catch(e){msg(e.message,true)}};
 q('#save').onclick=async()=>{try{await call('acl_admin_config_save',{user:current,content:q('#content').value});msg('Configuration saved atomically.')}catch(e){msg(e.message,true)}};
 q('#delete').onclick=async()=>{if(!confirm('Delete '+current+'?'))return;try{await call('acl_admin_user_delete',{user:current});location.reload()}catch(e){msg(e.message,true)}};

@@ -93,13 +93,13 @@ return [
 
 ### User administration
 
-The built-in `admin` account can open `http://<host>/?action=acl_admin_users` to manage valid direct subdirectories of `/config/users`. This independent project UI can create users, change passwords, duplicate or delete ordinary users, open the existing ACL editor, and edit a deliberately limited `config.php` form/advanced text area. `admin` is visible but cannot be deleted.
+The built-in `admin` account can open `http://<host>/?action=acl_admin_users` to manage valid direct subdirectories of `/config/users`. This independent project UI can create users, change passwords, duplicate or delete ordinary users, open the existing ACL editor, and edit a deliberately limited `config.php` form/advanced text area. The guided configuration view currently exposes `lang_default`; it uses the same secure save path as the advanced editor. `admin` is visible but cannot be deleted.
 
 Files Gallery remains responsible for authentication and for interpreting each user `config.php`. This project only provides an administration UI for those files; it does not reproduce or modify the upstream premium editor.
 
 New passwords use PHP's `password_hash()` format, the same format consumed by Files Gallery. Creating or duplicating a user writes only `config.php` and, when explicitly requested, `acl.php`—never arbitrary user-directory files.
 
-The advanced editor accepts only a syntax-valid PHP file that returns a literal array. It validates the submitted content before an atomic replacement; the active file is never overwritten by an invalid configuration. The immediately preceding valid file is retained as `/config/users/<username>/config.php.previous` (one backup only). All managed configuration files are mode `0600`.
+The advanced editor accepts only a syntax-valid PHP file that returns a literal array with a Files Gallery password hash. This intentional security limitation rejects variables, function calls, includes, expressions, and arbitrary executable PHP. It validates the submitted content before an atomic replacement; the active file is never overwritten by an invalid configuration. The immediately preceding valid file is retained as `/config/users/<username>/config.php.previous` (one backup only). All managed configuration files are mode `0600`.
 
 Every user-directory lookup reuses the ACL containment checks: usernames are strictly validated, a user must be a real direct child of `/config/users`, and symlinked directories or `config.php` files are refused. Administration GET routes require `admin`; all writes additionally require the existing Files Gallery CSRF token.
 
