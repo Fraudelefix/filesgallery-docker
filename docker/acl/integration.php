@@ -41,6 +41,11 @@ final class FilesGalleryAclIntegration
         Config::$config['cache_key'] = 'acl-' . hash('sha256', (string) Config::get('cache_key') . "\n" . $identity . "\n" . $payload);
     }
 
+    public static function isAdmin(): bool
+    {
+        return self::$ready && self::$username === 'admin';
+    }
+
     public static function excluded(string $logicalPath, bool $isDir): bool
     {
         if (!self::$ready) self::fail('ACL was not initialized.');

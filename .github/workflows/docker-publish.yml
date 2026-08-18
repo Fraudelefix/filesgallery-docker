@@ -160,6 +160,7 @@ jobs:
           docker exec "$container" php -r '$config=include "/var/www/html/_filesconfig.php"; $template=$config["settings_editor"]["template"] ?? ""; $files=base64_decode("ICAnZmlsZXNfZXhjbHVkZScgPT4gJy8oXnxcLykoXC58VGh1bWJzXC5kYiR8ZGVza3RvcFwuaW5pJHx+XCQpL2knLA=="); $dirs=base64_decode("ICAnZGlyc19leGNsdWRlJyA9PiAnLyhefFwvKShAZWFEaXJ8Wy5dW15cL10qfF9fTUFDT1NYfFwkUkVDWUNMRVwuQklOKShcL3wkKS9pJyw="); exit(str_contains($template, $files) && str_contains($template, $dirs) ? 0 : 1);'
           # Files Gallery intentionally replies 401 while showing its login form.
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --silent -c /tmp/fg-cookie http://127.0.0.1:80' > login-form.html
+          ! grep -q 'docker-admin/admin.js' login-form.html
           token="$(sed -n 's/.*name="token" value="\([^"]*\)".*/\1/p' login-form.html)"
           test -n "$token"
           if ! docker exec "$container" sh -c "curl --connect-timeout 5 --max-time 15 --fail-with-body --silent -b /tmp/fg-cookie -c /tmp/fg-cookie -d 'fusername=victor&fpassword=victor-test-password&token=$token' http://127.0.0.1:80" > login-response.html; then
