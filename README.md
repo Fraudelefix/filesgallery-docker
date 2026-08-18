@@ -75,7 +75,7 @@ New users created from Settings/User Manager inherit the default NAS/system excl
 
 ### Per-user folder ACLs
 
-After signing in as the built-in `admin` user, open `http://<host>/?action=admin_acl`. The page lists existing valid users (not `admin` itself), lazy-loads the actual `/media` directory tree, and edits only their read-visibility ACLs. It is independent of the Files Gallery premium user manager.
+After signing in as the built-in `admin` user, open `http://<host>/<subpath>/?action=admin_acl`. The page lists existing valid users (not `admin` itself), lazy-loads the actual `/media` directory tree, and edits only their read-visibility ACLs. It is independent of the Files Gallery premium user manager.
 
 A checked folder grants recursive read. Its unselected ancestors display as traversal-only; those ancestors are computed for navigation and are never written to disk. ACLs are allow-only: selecting `Family` makes every child readable, so to hide `Family/Private`, remove `Family` and select only the wanted branch such as `Family/Shared`. This does not grant upload, deletion, rename, move, or any other media write capability.
 
@@ -97,10 +97,10 @@ return [
 
 This interface is specific to `filesgallery-docker`; it is not an official Files Gallery administration interface. The built-in `admin` account can use:
 
-- `http://<host>/?action=admin` — Docker administration home.
-- `http://<host>/?action=admin_users` — user management.
-- `http://<host>/?action=admin_acl` — folder ACL editor.
-- `http://<host>/?action=tests` — native Files Gallery diagnostics.
+- `http://<host>/<subpath>/?action=admin` — Docker administration home.
+- `http://<host>/<subpath>/?action=admin_users` — user management.
+- `http://<host>/<subpath>/?action=admin_acl` — folder ACL editor.
+- `http://<host>/<subpath>/?action=tests` — native Files Gallery diagnostics.
 
 An Admin button is added to the Files Gallery topbar only for the `admin` account. The user-management page can create users, change passwords, duplicate or delete ordinary users, open the existing ACL editor, and edit a deliberately limited `config.php` form/advanced text area. The guided configuration view currently exposes `lang_default`; it uses the same secure save path as the advanced editor. `admin` is visible but cannot be deleted.
 

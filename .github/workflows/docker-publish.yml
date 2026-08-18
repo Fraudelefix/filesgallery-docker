@@ -248,13 +248,16 @@ jobs:
           echo 'ACL UI: admin administration home and navigation asset'
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=admin"' > admin-home.html
           grep -q 'Administration (Docker version)' admin-home.html
-          grep -q '/?action=admin_users' admin-home.html; grep -q '/?action=admin_acl' admin-home.html; grep -q '/?action=tests' admin-home.html
-          grep -q '/docker-admin/admin.js' login-admin.html
-          ! grep -q '/docker-admin/admin.js' login-response.html
+          grep -q 'href="?action=admin_users"' admin-home.html; grep -q 'href="?action=admin_acl"' admin-home.html; grep -q 'href="?action=tests"' admin-home.html
+          ! grep -q 'href="/?action=' admin-home.html
+          grep -q 'src="docker-admin/admin.js"' login-admin.html
+          ! grep -q 'src="/docker-admin/admin.js"' login-admin.html
+          ! grep -q 'docker-admin/admin.js' login-response.html
           echo 'ACL UI: admin page request'
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=admin_acl"' > acl-admin.html
           grep -q 'Administration (Docker version)' acl-admin.html; grep -q 'traversal-only' acl-admin.html
-          grep -q '/?action=admin_users' acl-admin.html; grep -q '/?action=admin_acl' acl-admin.html; grep -q '/?action=tests' acl-admin.html
+          grep -q 'href="?action=admin_users"' acl-admin.html; grep -q 'href="?action=admin_acl"' acl-admin.html; grep -q 'href="?action=tests"' acl-admin.html
+          ! grep -q 'href="/?action=' acl-admin.html
           ! grep -q '<option>evil</option>' acl-admin.html
           echo 'ACL UI: former routes fall through to upstream handling'
           for action in acl_admin acl_admin_users; do
@@ -328,7 +331,8 @@ jobs:
             cat users-admin.html; docker exec "$container" tail -n 100 /var/log/apache2/error.log || true; exit 1
           fi
           grep -q 'Administration (Docker version)' users-admin.html; grep -q 'admin' users-admin.html; ! grep -q '>evil<' users-admin.html
-          grep -q '/?action=admin_users' users-admin.html; grep -q '/?action=admin_acl' users-admin.html; grep -q '/?action=tests' users-admin.html
+          grep -q 'href="?action=admin_users"' users-admin.html; grep -q 'href="?action=admin_acl' users-admin.html; grep -q 'href="?action=tests"' users-admin.html
+          ! grep -q 'href="/?action=' users-admin.html
           echo 'USER ADMIN: native diagnostics remain available to admin'
           docker exec "$container" sh -c 'curl --connect-timeout 5 --max-time 15 --fail --silent -b /tmp/fg-admin.cookie "http://127.0.0.1:80?action=tests"' > native-tests.html
           grep -q 'Tests\|tests' native-tests.html

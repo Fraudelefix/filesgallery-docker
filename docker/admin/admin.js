@@ -13,7 +13,7 @@
     const link = document.createElement('a');
     link.id = 'filesgallery-docker-admin';
     link.className = 'button-icon';
-    link.href = '/?action=admin';
+    link.href = '?action=admin';
     link.title = 'Administration (Docker version)';
     link.setAttribute('aria-label', 'Administration (Docker version)');
     link.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.42 0-8 2.24-8 5v3h16v-3c0-2.76-3.58-5-8-5Z"/></svg>';

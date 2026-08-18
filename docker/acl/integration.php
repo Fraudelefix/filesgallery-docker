@@ -252,9 +252,9 @@ final class FilesGalleryAclIntegration
 
     private static function adminHeader(string $section): string
     {
-        return '<h1>Administration (Docker version)</h1><nav><a href="/?action=admin_users">Users</a> · '
-            . '<a href="/?action=admin_acl">ACL</a> · <a href="/?action=tests">Tests</a></nav>'
-            . '<p><a href="/">Back to gallery</a></p>'
+        return '<h1>Administration (Docker version)</h1><nav><a href="?action=admin_users">Users</a> · '
+            . '<a href="?action=admin_acl">ACL</a> · <a href="?action=tests">Tests</a></nav>'
+            . '<p><a href="./">Back to gallery</a></p>'
             . ($section === '' ? '' : '<h2>' . htmlspecialchars($section, ENT_QUOTES) . '</h2>');
     }
 
@@ -263,8 +263,8 @@ final class FilesGalleryAclIntegration
         header('content-type: text/html; charset=UTF-8');
         exit('<!doctype html><meta charset="utf-8"><title>Administration (Docker version)</title>'
             . '<style>body{font:16px sans-serif;max-width:760px;margin:2rem auto}.cards{display:flex;gap:1rem;flex-wrap:wrap}.card{border:1px solid #ccc;padding:1rem;min-width:14rem;text-decoration:none;color:inherit}</style>'
-            . self::adminHeader('') . '<div class="cards"><a class="card" href="/?action=admin_users"><strong>Users</strong><br>Manage Files Gallery users</a>'
-            . '<a class="card" href="/?action=admin_acl"><strong>ACL</strong><br>Manage folder permissions</a></div>');
+            . self::adminHeader('') . '<div class="cards"><a class="card" href="?action=admin_users"><strong>Users</strong><br>Manage Files Gallery users</a>'
+            . '<a class="card" href="?action=admin_acl"><strong>ACL</strong><br>Manage folder permissions</a></div>');
     }
 
     private static function saveAdmin(): never
